@@ -286,7 +286,10 @@ pub(crate) fn unescape_text(value: &str) -> String {
             Some('\\') => out.push('\\'),
             Some(';') => out.push(';'),
             Some(',') => out.push(','),
-            Some(other) => out.push(other),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
             None => out.push('\\'),
         }
     }

@@ -106,7 +106,7 @@ impl fmt::Display for Property {
             write!(f, "{}", self.value)
         } else {
             for c in util::escape_text(&self.value).chars() {
-                if c.is_control() && c != '\n' {
+                if c.is_control() && c != '\n' && c != '\t' {
                     continue;
                 }
                 f.write_char(c)?;
@@ -166,7 +166,8 @@ impl FromStr for Property {
         };
 
         let raw_value = s[val_start..].to_string();
-        let escaped = !uses_text_escaping(&name) && needs_raw_value_preservation(&raw_value);
+        let escaped = (!uses_text_escaping(&name) && needs_raw_value_preservation(&raw_value))
+            || has_unknown_text_escape(&raw_value);
         let value = if escaped {
             raw_value
         } else {
@@ -190,6 +191,21 @@ fn uses_text_escaping(name: &str) -> bool {
 
 fn needs_raw_value_preservation(value: &str) -> bool {
     value.contains(['\\', ';', ',', '\n'])
+}
+
+fn has_unknown_text_escape(value: &str) -> bool {
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            continue;
+        }
+
+        match chars.next() {
+            Some('n' | 'N' | '\\' | ';' | ',') | None => {}
+            Some(_) => return true,
+        }
+    }
+    false
 }
 
 /// A consumer of [`Property`].
@@ -440,6 +456,22 @@ mod tests {
         let prop = prop_str.parse::<Property>().unwrap();
         assert_eq!(prop.value(), "line1\nline2");
         assert_eq!(format!("{}", prop), "SUMMARY:line1\\nline2");
+    }
+
+    #[test]
+    fn unknown_text_escape_is_preserved_losslessly() {
+        let prop_str = "SUMMARY:foo\\qbar";
+        let prop = prop_str.parse::<Property>().unwrap();
+        assert_eq!(prop.value(), r"foo\qbar");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn tabs_are_preserved_in_text_properties() {
+        let prop_str = "SUMMARY:foo\tbar";
+        let prop = prop_str.parse::<Property>().unwrap();
+        assert_eq!(prop.value(), "foo\tbar");
+        assert_eq!(format!("{}", prop), prop_str);
     }
 
     #[test]
