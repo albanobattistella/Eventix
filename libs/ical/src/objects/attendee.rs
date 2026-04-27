@@ -493,6 +493,25 @@ mod tests {
     }
 
     #[test]
+    fn attendee_try_from_preserves_multi_value_unknown_param() {
+        let att_str = "ATTENDEE;MEMBER=\"mailto:list-a@example.com\",\"mailto:list-b@example.com\":mailto:test@example.com";
+        let line = LineReader::new(att_str.as_bytes()).next().unwrap();
+        let prop = line.parse::<Property>().unwrap();
+        let att = CalAttendee::try_from(prop).unwrap();
+
+        assert_eq!(att.params.len(), 1);
+        assert_eq!(att.params[0].name(), "MEMBER");
+        assert_eq!(
+            att.params[0].values(),
+            [
+                "mailto:list-a@example.com".to_string(),
+                "mailto:list-b@example.com".to_string()
+            ]
+        );
+        assert_eq!(att.to_prop().to_string(), att_str);
+    }
+
+    #[test]
     fn attendee_merge_with_params_adds_new() {
         let att_str1 = "ATTENDEE;X-OLD=oldvalue:mailto:test@example.com";
         let line1 = LineReader::new(att_str1.as_bytes()).next().unwrap();

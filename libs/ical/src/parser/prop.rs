@@ -67,10 +67,15 @@ impl Property {
 
     /// Returns true if this property has a parameter with given name and value.
     pub fn has_param_value(&self, name: &str, value: &str) -> bool {
-        matches!(
-            self.params.iter().find(|p| p.name() == name),
-            Some(param) if param.value().eq_ignore_ascii_case(value)
-        )
+        self.params
+            .iter()
+            .find(|p| p.name() == name)
+            .is_some_and(|param| {
+                param
+                    .values()
+                    .iter()
+                    .any(|param_value| param_value.eq_ignore_ascii_case(value))
+            })
     }
 
     /// Returns a slice of all parameters.
@@ -209,15 +214,20 @@ pub trait PropertyProducer {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Parameter {
     name: String,
-    value: String,
+    values: Vec<String>,
 }
 
 impl Parameter {
     /// Creates a new parameter with given name and value
     pub fn new<N: ToString, V: ToString>(name: N, value: V) -> Self {
+        Self::new_values(name, vec![value])
+    }
+
+    /// Creates a new parameter with given name and values.
+    pub fn new_values<N: ToString, V: ToString>(name: N, values: Vec<V>) -> Self {
         Self {
             name: name.to_string(),
-            value: value.to_string(),
+            values: values.into_iter().map(|value| value.to_string()).collect(),
         }
     }
 
@@ -228,17 +238,28 @@ impl Parameter {
 
     /// Returns a reference to the value
     pub fn value(&self) -> &String {
-        &self.value
+        &self.values[0]
+    }
+
+    /// Returns a slice of all values.
+    pub fn values(&self) -> &[String] {
+        &self.values
     }
 }
 
 impl fmt::Display for Parameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}=", self.name)?;
-        if self.value.contains([':', ';', ',']) {
-            write!(f, "\"{}\"", self.value)?;
-        } else {
-            write!(f, "{}", self.value)?;
+        for (idx, value) in self.values.iter().enumerate() {
+            if idx > 0 {
+                f.write_char(',')?;
+            }
+
+            if value.contains([':', ';', ',']) {
+                write!(f, "\"{}\"", value)?;
+            } else {
+                write!(f, "{}", value)?;
+            }
         }
         Ok(())
     }
@@ -254,16 +275,43 @@ impl FromStr for Parameter {
         let was_quoted = value.starts_with('"');
 
         // strip quotes
-        let mut value = if was_quoted {
-            value[1..value.len() - 1].to_string()
+        let values = if was_quoted {
+            parse_parameter_values(&value[1..value.len() - 1], true, &name)
         } else {
-            value.to_string()
+            parse_parameter_values(value, false, &name)
         };
 
-        if !was_quoted && should_uppercase_param_value(&name) {
-            value = value.to_ascii_uppercase();
+        Ok(Self { name, values })
+    }
+}
+
+fn parse_parameter_values(value: &str, was_quoted: bool, name: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = was_quoted;
+
+    for c in value.chars() {
+        match c {
+            '"' => {
+                in_quote = !in_quote;
+            }
+            ',' if !in_quote => {
+                values.push(normalize_parameter_value(current.clone(), was_quoted, name));
+                current.clear();
+            }
+            _ => current.push(c),
         }
-        Ok(Self { name, value })
+    }
+
+    values.push(normalize_parameter_value(current, was_quoted, name));
+    values
+}
+
+fn normalize_parameter_value(value: String, was_quoted: bool, name: &str) -> String {
+    if !was_quoted && should_uppercase_param_value(name) {
+        value.to_ascii_uppercase()
+    } else {
+        value
     }
 }
 
@@ -320,6 +368,22 @@ mod tests {
             [Parameter::new("TZID".to_string(), "My:TZ".to_string())]
         );
         assert_eq!(prop.value(), "20241024T090000");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn param_with_multiple_values() {
+        let prop_str = "ATTENDEE;MEMBER=\"mailto:a\",\"mailto:b\":mailto:c";
+        let prop = prop_str.parse::<Property>().unwrap();
+        assert_eq!(prop.name(), "ATTENDEE");
+        assert_eq!(
+            prop.params(),
+            [Parameter::new_values(
+                "MEMBER",
+                vec!["mailto:a", "mailto:b"]
+            )]
+        );
+        assert_eq!(prop.value(), "mailto:c");
         assert_eq!(format!("{}", prop), prop_str);
     }
 
@@ -427,5 +491,27 @@ mod tests {
 
         let trigger = "TRIGGER;RELATED=\"end\":PT5M".parse::<Property>().unwrap();
         assert!(trigger.has_param_value("RELATED", "END"));
+    }
+
+    #[test]
+    fn multi_value_parameter_matches_each_member() {
+        let prop = "ATTENDEE;MEMBER=\"mailto:a\",\"mailto:b\":mailto:c"
+            .parse::<Property>()
+            .unwrap();
+
+        assert!(prop.has_param_value("MEMBER", "mailto:a"));
+        assert!(prop.has_param_value("MEMBER", "mailto:b"));
+    }
+
+    #[test]
+    fn quoted_single_parameter_value_can_contain_commas() {
+        let prop_str = "ATTENDEE;CN=\"My,Name\":mailto:test@example.com";
+        let prop = prop_str.parse::<Property>().unwrap();
+
+        assert_eq!(
+            prop.params(),
+            [Parameter::new("CN".to_string(), "My,Name".to_string())]
+        );
+        assert_eq!(format!("{}", prop), prop_str);
     }
 }
