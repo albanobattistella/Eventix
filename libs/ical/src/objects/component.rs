@@ -241,23 +241,31 @@ impl EventLikeComponent {
     }
 
     fn assert_rrule_until_matches_start(&self) {
-        let Some(start) = self.start.as_ref() else {
-            return;
-        };
-        let Some(until) = self.rrule.as_ref().and_then(CalRRule::until) else {
-            return;
-        };
+        if let (Some(start), Some(until)) = (
+            self.start.as_ref(),
+            self.rrule.as_ref().and_then(CalRRule::until),
+        ) {
+            assert!(
+                start.is_same_value_type(until),
+                "RRULE UNTIL must use the same value type as DTSTART: DTSTART={start:?}, UNTIL={until:?}"
+            );
+        }
+    }
 
-        assert!(
-            start.is_same_value_type(until),
-            "RRULE UNTIL must use the same value type as DTSTART: DTSTART={start:?}, UNTIL={until:?}"
-        );
+    fn assert_recurrence_id_matches_start(&self) {
+        if let (Some(start), Some(rid)) = (self.start.as_ref(), self.rid.as_ref()) {
+            assert!(
+                start.is_same_value_type(rid),
+                "RECURRENCE-ID must use the same value type as DTSTART: DTSTART={start:?}, RECURRENCE-ID={rid:?}"
+            );
+        }
     }
 }
 
 impl PropertyProducer for EventLikeComponent {
     fn to_props(&self) -> Vec<Property> {
         self.assert_rrule_until_matches_start();
+        self.assert_recurrence_id_matches_start();
 
         let mut props = vec![];
         props.push(Property::new("UID", vec![], self.uid.clone()));

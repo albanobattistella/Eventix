@@ -212,4 +212,19 @@ END:VEVENT\n";
 
         let _ = ev.to_props();
     }
+
+    #[test]
+    #[should_panic(expected = "RECURRENCE-ID must use the same value type as DTSTART")]
+    fn to_props_rejects_recurrence_id_with_mismatched_value_type() {
+        let mut ev = CalEvent::new("bad-rid");
+        ev.set_start(Some(CalDate::DateTime(CalDateTime::Utc(
+            Utc.with_ymd_and_hms(2025, 1, 1, 9, 0, 0).unwrap(),
+        ))));
+        ev.set_rid(Some(CalDate::Date(
+            NaiveDate::from_ymd_opt(2025, 1, 8).unwrap(),
+            crate::objects::CalDateType::Exclusive,
+        )));
+
+        let _ = ev.to_props();
+    }
 }
