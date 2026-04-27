@@ -240,32 +240,50 @@ impl EventLikeComponent {
         self.props.retain(|prop| !base.props.contains(prop));
     }
 
-    fn assert_rrule_until_matches_start(&self) {
+    fn check_rrule_until_matches_start(&self) {
         if let (Some(start), Some(until)) = (
             self.start.as_ref(),
             self.rrule.as_ref().and_then(CalRRule::until),
-        ) {
-            assert!(
-                start.is_same_value_type(until),
+        ) && !start.is_same_value_type(until)
+        {
+            warn!(
                 "RRULE UNTIL must use the same value type as DTSTART: DTSTART={start:?}, UNTIL={until:?}"
             );
         }
     }
 
-    fn assert_recurrence_id_matches_start(&self) {
-        if let (Some(start), Some(rid)) = (self.start.as_ref(), self.rid.as_ref()) {
-            assert!(
-                start.is_same_value_type(rid),
+    fn check_recurrence_id_matches_start(&self) {
+        if let (Some(start), Some(rid)) = (self.start.as_ref(), self.rid.as_ref())
+            && !start.is_same_value_type(rid)
+        {
+            warn!(
                 "RECURRENCE-ID must use the same value type as DTSTART: DTSTART={start:?}, RECURRENCE-ID={rid:?}"
             );
+        }
+    }
+
+    fn check_exdate_type_mismatch(&self) {
+        if let Some(dtstart) = self.start() {
+            for exdate in self.exdates() {
+                if !dtstart.is_same_type(exdate) {
+                    warn!(
+                        "component {} (uid {}) has EXDATE {:?} with different value type than DTSTART {:?}",
+                        self.ctype(),
+                        self.uid(),
+                        exdate,
+                        dtstart
+                    );
+                }
+            }
         }
     }
 }
 
 impl PropertyProducer for EventLikeComponent {
     fn to_props(&self) -> Vec<Property> {
-        self.assert_rrule_until_matches_start();
-        self.assert_recurrence_id_matches_start();
+        self.check_rrule_until_matches_start();
+        self.check_recurrence_id_matches_start();
+        self.check_exdate_type_mismatch();
 
         let mut props = vec![];
         props.push(Property::new("UID", vec![], self.uid.clone()));
