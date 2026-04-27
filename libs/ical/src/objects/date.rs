@@ -350,6 +350,16 @@ impl CalDate {
         Self::Date(date, ty)
     }
 
+    /// Returns a new [`CalDate::DateTime`] instance for the given date/time in given timezone.
+    ///
+    /// If the time is `None`, 0:00:00 will be used.
+    pub fn new_datetime<T: ToString>(date: NaiveDate, time: Option<NaiveTime>, tz: T) -> Self {
+        Self::DateTime(CalDateTime::Timezone(
+            date.and_time(time.unwrap_or(NaiveTime::from_hms_opt(0, 0, 0).unwrap())),
+            tz.to_string(),
+        ))
+    }
+
     /// Returns a new [`CalDate::DateTime`] instance for the current time in UTC.
     pub fn now() -> Self {
         CalDate::DateTime(CalDateTime::Utc(Utc::now()))
@@ -371,6 +381,29 @@ impl CalDate {
         matches!(
             (self, other),
             (CalDate::Date(..), CalDate::Date(..)) | (CalDate::DateTime(_), CalDate::DateTime(_))
+        )
+    }
+
+    /// Returns true if `self` and `other` use the same DATE-TIME representation.
+    ///
+    /// This distinguishes floating, UTC, and TZID-based values. Plain `DATE` values are treated
+    /// as matching only other `DATE` values.
+    pub fn is_same_value_type(&self, other: &CalDate) -> bool {
+        matches!(
+            (self, other),
+            (CalDate::Date(..), CalDate::Date(..))
+                | (
+                    CalDate::DateTime(CalDateTime::Floating(_)),
+                    CalDate::DateTime(CalDateTime::Floating(_))
+                )
+                | (
+                    CalDate::DateTime(CalDateTime::Utc(_)),
+                    CalDate::DateTime(CalDateTime::Utc(_))
+                )
+                | (
+                    CalDate::DateTime(CalDateTime::Timezone(_, _)),
+                    CalDate::DateTime(CalDateTime::Timezone(_, _))
+                )
         )
     }
 

@@ -26,7 +26,7 @@ async fn action_update(
         return Ok(false);
     }
 
-    let rrule = match form.rrule.to_rrule() {
+    let rrule = match form.rrule.to_rrule(locale.timezone().name()) {
         Ok(rrule) => rrule,
         Err(e) => {
             page.add_error(e);

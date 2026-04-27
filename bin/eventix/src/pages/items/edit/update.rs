@@ -8,8 +8,7 @@ use axum::response::IntoResponse;
 use chrono_tz::Tz;
 use eventix_ical::col::CalFile;
 use eventix_ical::objects::{
-    CalCompType, CalComponent, CalDate, CalDateType, CalEvent, CalTodo, Calendar, EventLike,
-    UpdatableEventLike,
+    CalCompType, CalComponent, CalDate, CalEvent, CalTodo, Calendar, EventLike, UpdatableEventLike,
 };
 use eventix_locale::Locale;
 use eventix_state::EventixState;
@@ -79,6 +78,8 @@ fn action_update(
         return Ok((false, None));
     }
 
+    let event_tz = form.start_end.effective_timezone(locale);
+
     let rrule = if req.mode == EditMode::Occurrence {
         // inherit from base if we can
         if Some(&form.summary) == base.summary() {
@@ -92,7 +93,7 @@ fn action_update(
         }
         None
     } else {
-        match form.rrule.as_ref().map(|rr| rr.to_rrule()) {
+        match form.rrule.as_ref().map(|rr| rr.to_rrule(&event_tz)) {
             None => None,
             Some(Ok(rrule)) => rrule,
             Some(Err(e)) => {
@@ -110,16 +111,13 @@ fn action_update(
         calendar
     };
 
-    let event_tz = form.start_end.effective_timezone(locale);
-
     let new_uid = if req.mode == EditMode::Following {
         let rid = rid.unwrap();
 
         // end the series before this occurrence
         let mut old_rrule = base.rrule().unwrap().clone();
         let old_start = base.start().unwrap().clone();
-        let prev_day = rid.as_naive_date().pred_opt().unwrap();
-        let until = CalDate::new_date(prev_day, CalDateType::Inclusive);
+        let until = CalDate::new_datetime(rid.as_naive_date(), None, &event_tz);
         old_rrule.set_until(until);
         base.set_rrule(Some(old_rrule));
 

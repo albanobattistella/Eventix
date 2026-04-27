@@ -7,7 +7,7 @@ use askama::Template;
 use chrono::Weekday;
 use chrono_tz::Tz;
 use eventix_ical::objects::{
-    CalDateType, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc, DateContext, DayDesc,
+    CalDate, CalDateType, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc, DateContext, DayDesc,
 };
 use eventix_ical::parser::ParseError;
 use eventix_locale::Locale;
@@ -478,7 +478,7 @@ impl RecurRequest {
         }
     }
 
-    pub fn to_rrule(&self) -> anyhow::Result<Option<CalRRule>> {
+    pub fn to_rrule(&self, timezone: &str) -> anyhow::Result<Option<CalRRule>> {
         if let Some(freq) = self.freq {
             let mut rrule = CalRRule::default();
             rrule.set_frequency(freq.into());
@@ -556,11 +556,14 @@ impl RecurRequest {
                 RecurEnd::Count => rrule.set_count(self.count),
                 RecurEnd::Until => {
                     if let Some(ref until) = self.until {
-                        rrule.set_until(
-                            until
-                                .to_caldate(CalDateType::Inclusive, false)
-                                .ok_or_else(|| anyhow!("Please specify a valid end date"))?,
-                        );
+                        let date = until
+                            .to_caldate(CalDateType::Inclusive, false)
+                            .ok_or_else(|| anyhow!("Please specify a valid end date"))?;
+                        rrule.set_until(CalDate::new_datetime(
+                            date.as_naive_date(),
+                            None,
+                            timezone,
+                        ));
                     } else {
                         return Err(anyhow!("Please specify the end date"));
                     }

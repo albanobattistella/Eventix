@@ -237,10 +237,26 @@ impl EventLikeComponent {
         }
         self.props.retain(|prop| !base.props.contains(prop));
     }
+
+    fn assert_rrule_until_matches_start(&self) {
+        let Some(start) = self.start.as_ref() else {
+            return;
+        };
+        let Some(until) = self.rrule.as_ref().and_then(CalRRule::until) else {
+            return;
+        };
+
+        assert!(
+            start.is_same_value_type(until),
+            "RRULE UNTIL must use the same value type as DTSTART: DTSTART={start:?}, UNTIL={until:?}"
+        );
+    }
 }
 
 impl PropertyProducer for EventLikeComponent {
     fn to_props(&self) -> Vec<Property> {
+        self.assert_rrule_until_matches_start();
+
         let mut props = vec![];
         props.push(Property::new("UID", vec![], self.uid.clone()));
         if let Some(ref created) = self.created {

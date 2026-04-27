@@ -127,8 +127,10 @@ impl PropertyConsumer for CalEvent {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{NaiveDate, TimeZone, Utc};
+
     use super::*;
-    use crate::objects::EventLike;
+    use crate::objects::{CalDateTime, CalRRule, EventLike, UpdatableEventLike};
     use crate::parser::{LineReader, Property};
 
     #[test]
@@ -191,5 +193,23 @@ END:VEVENT\n";
         assert!(ev.end().is_some());
         ev.set_end(None);
         assert!(ev.end().is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "RRULE UNTIL must use the same value type as DTSTART")]
+    fn to_props_rejects_rrule_until_with_mismatched_value_type() {
+        let mut ev = CalEvent::new("bad-rrule");
+        ev.set_start(Some(CalDate::DateTime(CalDateTime::Utc(
+            Utc.with_ymd_and_hms(2025, 1, 1, 9, 0, 0).unwrap(),
+        ))));
+
+        let mut rrule = CalRRule::default();
+        rrule.set_until(CalDate::Date(
+            NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
+            crate::objects::CalDateType::Exclusive,
+        ));
+        ev.set_rrule(Some(rrule));
+
+        let _ = ev.to_props();
     }
 }

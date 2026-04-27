@@ -109,7 +109,7 @@ pub trait CompAction {
 
         if self
             .rrule()
-            .and_then(|rr| rr.to_rrule().unwrap_or(None))
+            .and_then(|rr| rr.to_rrule(&event_tz).unwrap_or(None))
             .is_some()
             && start.is_none()
         {
