@@ -13,7 +13,7 @@ const MAX_LINE_LEN: usize = 75;
 /// logical lines.
 pub struct LineReader<R: BufRead> {
     reader: R,
-    last: Option<String>,
+    last: Option<Vec<u8>>,
 }
 
 impl<R: BufRead> LineReader<R> {
@@ -27,28 +27,24 @@ impl<R: BufRead> Iterator for LineReader<R> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut next_line = String::new();
-
-        if let Some(last) = self.last.take() {
-            next_line = last;
+        let mut next_line = if let Some(last) = self.last.take() {
+            last
         } else {
-            for line in self.reader.by_ref().lines() {
-                let line = line.ok()?;
+            loop {
+                let line = read_physical_line(&mut self.reader)?;
                 if !line.is_empty() {
-                    next_line = line;
-                    break;
+                    break line;
                 }
             }
-        }
+        };
 
-        for line in self.reader.by_ref().lines() {
-            let line = line.ok()?;
+        while let Some(line) = read_physical_line(&mut self.reader) {
             if line.is_empty() {
                 continue;
             }
 
-            if line.starts_with(' ') || line.starts_with('\t') {
-                next_line.push_str(&line[1..]);
+            if matches!(line.first(), Some(b' ' | b'\t')) {
+                next_line.extend_from_slice(&line[1..]);
             } else {
                 self.last = Some(line);
                 break;
@@ -58,9 +54,25 @@ impl<R: BufRead> Iterator for LineReader<R> {
         if next_line.is_empty() {
             None
         } else {
-            Some(next_line)
+            String::from_utf8(next_line).ok()
         }
     }
+}
+
+fn read_physical_line<R: BufRead>(reader: &mut R) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    let read = reader.read_until(b'\n', &mut buf).ok()?;
+    if read == 0 {
+        return None;
+    }
+
+    if buf.ends_with(b"\n") {
+        buf.pop();
+        if buf.ends_with(b"\r") {
+            buf.pop();
+        }
+    }
+    Some(buf)
 }
 
 /// Writes lines according to RFC 5545.
@@ -196,5 +208,18 @@ END:VCALENDAR\r
             reader.next(),
             Some("ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=TENTATIVE;CN=Henry Cabot:mailto:hcabot@example.com".to_string())
         );
+    }
+
+    #[test]
+    fn unfolds_utf8_split_across_fold_boundary() {
+        let input = [
+            b'S', b'U', b'M', b'M', b'A', b'R', b'Y', b':', b'C', b'a', b'f', 0xC3, b'\r', b'\n',
+            b' ', 0xA9, b' ', b'a', b'n', b'd', b' ', b't', b'e', b'a',
+        ];
+
+        let mut reader = LineReader::new(&input[..]);
+        let expected = format!("SUMMARY:Caf{} and tea", '\u{00e9}');
+        assert_eq!(reader.next(), Some(expected));
+        assert_eq!(reader.next(), None);
     }
 }
