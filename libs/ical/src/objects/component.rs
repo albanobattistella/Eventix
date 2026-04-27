@@ -129,12 +129,7 @@ impl EventLikeComponent {
                 self.location = Some(prop.take_value());
             }
             "CATEGORIES" => {
-                self.categories = Some(
-                    util::split_escaped_commas(prop.value())
-                        .into_iter()
-                        .map(|v| v.trim().to_string())
-                        .collect(),
-                );
+                self.categories = Some(util::split_escaped_commas(prop.value()));
             }
             "ORGANIZER" => {
                 self.organizer = Some(prop.try_into()?);
@@ -999,7 +994,7 @@ mod tests {
     use chrono::TimeZone;
     use chrono_tz::UTC;
 
-    use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, DateContext};
+    use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, DateContext, EventLike};
     use crate::parser::{LineReader, ParseError, Property, PropertyProducer};
 
     use super::{CalCompType, EventLikeComponent};
@@ -1068,7 +1063,7 @@ mod tests {
                 String::from("SUMMARY:Quarterly planning"),
                 String::from("DESCRIPTION:Plan work and assign owners"),
                 String::from("LOCATION:Conference Room A"),
-                String::from("CATEGORIES:Engineering\\,Platform,Operations"),
+                String::from("CATEGORIES:Engineering\\,Platform, Operations"),
                 String::from("ORGANIZER;CN=Alex Lead:mailto:alex@example.com"),
                 String::from(
                     "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Alice:mailto:alice@example.com"
@@ -1080,6 +1075,33 @@ mod tests {
                 String::from("RECURRENCE-ID:20250103T090000Z"),
                 String::from("X-CUSTOM:kept-as-generic-prop"),
             ]
+        );
+    }
+
+    #[test]
+    fn categories_preserve_significant_whitespace() {
+        let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
+        parse_prop_line(&mut comp, "CATEGORIES:Engineering\\,Platform, Operations").unwrap();
+
+        assert_eq!(
+            comp.categories(),
+            Some(
+                vec![
+                    "Engineering,Platform".to_string(),
+                    " Operations".to_string()
+                ]
+                .as_ref()
+            )
+        );
+
+        let categories = comp
+            .to_props()
+            .into_iter()
+            .find(|prop| prop.name() == "CATEGORIES")
+            .unwrap();
+        assert_eq!(
+            categories.to_string(),
+            "CATEGORIES:Engineering\\,Platform, Operations"
         );
     }
 
