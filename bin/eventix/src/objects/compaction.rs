@@ -190,7 +190,7 @@ pub trait CompAction {
                 if st.status() == CalTodoStatus::Completed {
                     td.set_percent(Some(100));
                     let completed = st.completed().and_then(|d| d.to_caldate(dtype, false));
-                    comp.set_completed_checked(completed, ctx, local_tz)?;
+                    td.set_completed(completed.map(|d| d.to_utc()));
                 } else if st.status() == CalTodoStatus::InProcess {
                     td.set_percent(st.percent());
                 } else {

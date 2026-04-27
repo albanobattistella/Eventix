@@ -92,6 +92,9 @@ impl CalTodo {
     ///
     /// See <https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.1>.
     pub fn set_completed(&mut self, completed: Option<CalDate>) {
+        if let Some(date) = &completed {
+            EventLikeComponent::assert_utc_only("COMPLETED", date);
+        }
         self.completed = completed;
     }
 

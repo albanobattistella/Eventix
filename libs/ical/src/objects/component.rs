@@ -95,6 +95,13 @@ impl EventLikeComponent {
         self.start = start;
     }
 
+    pub(crate) fn assert_utc_only(name: &str, date: &CalDate) {
+        assert!(
+            matches!(date, CalDate::DateTime(crate::objects::CalDateTime::Utc(_))),
+            "{name} must be a UTC DATE-TIME"
+        );
+    }
+
     pub(crate) fn parse_prop<R: BufRead>(
         &mut self,
         lines: &mut LineReader<R>,
@@ -411,10 +418,12 @@ impl UpdatableEventLike for EventLikeComponent {
     }
 
     fn set_last_modified(&mut self, date: CalDate) {
+        Self::assert_utc_only("LAST-MODIFIED", &date);
         self.last_mod = Some(date);
     }
 
     fn set_stamp(&mut self, date: CalDate) {
+        Self::assert_utc_only("DTSTAMP", &date);
         self.stamp = date;
     }
 
@@ -798,24 +807,6 @@ impl CalComponent {
             ctx.validate_date(d, local_tz)?;
         }
         self.as_todo_mut().unwrap().set_due(due);
-        Ok(())
-    }
-
-    /// Sets the completion date of a TODO component, validating it against the user's local
-    /// timezone.
-    ///
-    /// Returns an error when the datetime falls in a DST gap (non-existent time) or DST fold
-    /// (ambiguous time). Panics if the component is not a TODO.
-    pub fn set_completed_checked(
-        &mut self,
-        completed: Option<CalDate>,
-        ctx: &DateContext,
-        local_tz: &Tz,
-    ) -> Result<(), ParseError> {
-        if let Some(ref d) = completed {
-            ctx.validate_date(d, local_tz)?;
-        }
-        self.as_todo_mut().unwrap().set_completed(completed);
         Ok(())
     }
 }
@@ -1261,19 +1252,6 @@ mod tests {
                 .is_err()
         );
         assert!(td.as_todo().unwrap().due().is_none());
-
-        // set_completed_checked: both gap and fold must be rejected, leaving completed None.
-        let mut td = CalComponent::Todo(CalTodo::new("td-2"));
-        assert!(
-            td.set_completed_checked(Some(gap.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(td.as_todo().unwrap().completed().is_none());
-        assert!(
-            td.set_completed_checked(Some(fold.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(td.as_todo().unwrap().completed().is_none());
     }
 
     #[test]
@@ -1281,7 +1259,7 @@ mod tests {
         use chrono::NaiveDate;
         use chrono_tz::Tz;
 
-        use crate::objects::{CalDate, CalDateTime, CalTodo, EventLike};
+        use crate::objects::{CalDate, CalDateTime, EventLike};
 
         // 10:00 AM on 2025-03-30 is a valid time in Europe/Berlin.
         let valid = CalDate::DateTime(CalDateTime::Floating(
@@ -1305,12 +1283,5 @@ mod tests {
                 .is_ok()
         );
         assert!(ev.set_end_checked(None, &ctx, &Tz::Europe__Berlin).is_ok());
-
-        let mut td = CalComponent::Todo(CalTodo::new("td-n"));
-        assert!(td.set_due_checked(None, &ctx, &Tz::Europe__Berlin).is_ok());
-        assert!(
-            td.set_completed_checked(None, &ctx, &Tz::Europe__Berlin)
-                .is_ok()
-        );
     }
 }

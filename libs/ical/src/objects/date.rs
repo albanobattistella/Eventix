@@ -414,9 +414,7 @@ impl CalDate {
     pub fn normalize_to(&self, target: &CalDate) -> Self {
         match target {
             Self::Date(_, ty) => Self::Date(self.as_naive_date(), *ty),
-            Self::DateTime(CalDateTime::Utc(_)) => Self::DateTime(CalDateTime::Utc(
-                self.as_naive_date().and_hms_opt(0, 0, 0).unwrap().and_utc(),
-            )),
+            Self::DateTime(CalDateTime::Utc(_)) => self.to_utc(),
             Self::DateTime(CalDateTime::Timezone(_, tzid)) => {
                 let naive = match self {
                     Self::DateTime(CalDateTime::Timezone(dt, _)) => *dt,
@@ -436,6 +434,13 @@ impl CalDate {
                 Self::DateTime(CalDateTime::Floating(naive))
             }
         }
+    }
+
+    /// Returns a `CalDate` instance in Utc
+    pub fn to_utc(&self) -> Self {
+        Self::DateTime(CalDateTime::Utc(
+            self.as_naive_date().and_hms_opt(0, 0, 0).unwrap().and_utc(),
+        ))
     }
 
     /// Builds and returns a [`Property`] for this date.
