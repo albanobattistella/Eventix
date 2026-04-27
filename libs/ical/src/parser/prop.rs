@@ -165,21 +165,31 @@ impl FromStr for Property {
             (vec![], end)
         };
 
-        let value = s[val_start..].to_string();
-        let value = if name == "RRULE" || name == "CATEGORIES" {
-            value
+        let raw_value = s[val_start..].to_string();
+        let escaped = !uses_text_escaping(&name) && needs_raw_value_preservation(&raw_value);
+        let value = if escaped {
+            raw_value
         } else {
-            util::unescape_text(&value)
+            util::unescape_text(&raw_value)
         };
 
         Ok(Self {
-            // these are special cases, which do not use escaping
-            escaped: name == "RRULE" || name == "CATEGORIES",
+            // Non-TEXT values are preserved exactly as parsed so unknown and structured
+            // properties round-trip without applying TEXT escaping rules.
+            escaped,
             name,
             params,
             value,
         })
     }
+}
+
+fn uses_text_escaping(name: &str) -> bool {
+    matches!(name, "SUMMARY" | "DESCRIPTION" | "LOCATION" | "TZNAME")
+}
+
+fn needs_raw_value_preservation(value: &str) -> bool {
+    value.contains(['\\', ';', ',', '\n'])
 }
 
 /// A consumer of [`Property`].
@@ -445,6 +455,24 @@ mod tests {
         let prop_str = "RRULE:FREQ=DAILY;X-TEST=FOO\\N";
         let prop = prop_str.parse::<Property>().unwrap();
         assert_eq!(prop.value(), "FREQ=DAILY;X-TEST=FOO\\N");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn generic_x_property_value_is_preserved_verbatim() {
+        let prop_str = "X-CUSTOM:Value\\Nwith\\;literal\\,separators";
+        let prop = prop_str.parse::<Property>().unwrap();
+
+        assert_eq!(prop.value(), "Value\\Nwith\\;literal\\,separators");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn request_status_value_is_preserved_verbatim() {
+        let prop_str = "REQUEST-STATUS:2.0;Success;details\\Nkept";
+        let prop = prop_str.parse::<Property>().unwrap();
+
+        assert_eq!(prop.value(), "2.0;Success;details\\Nkept");
         assert_eq!(format!("{}", prop), prop_str);
     }
 
