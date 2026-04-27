@@ -498,6 +498,16 @@ mod tests {
             }
             _ => panic!("expected CalTrigger::Relative"),
         }
+
+        let prop: Property = "TRIGGER;RELATED=\"end\":PT5M".parse().unwrap();
+        let trigger: CalTrigger = prop.try_into().unwrap();
+        match trigger {
+            CalTrigger::Relative { related, duration } => {
+                assert_eq!(related, CalRelated::End);
+                assert_eq!(duration, Duration::minutes(5).into());
+            }
+            _ => panic!("expected CalTrigger::Relative"),
+        }
     }
 
     #[test]

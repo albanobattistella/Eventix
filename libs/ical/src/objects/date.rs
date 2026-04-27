@@ -735,6 +735,19 @@ mod tests {
     }
 
     #[test]
+    fn date_with_quoted_lowercase_value_param() {
+        let prop = "DUE;VALUE=\"date\":20041030".parse::<Property>().unwrap();
+        let date: CalDate = prop.try_into().unwrap();
+        assert_eq!(
+            date,
+            CalDate::Date(
+                NaiveDate::from_ymd_opt(2004, 10, 30).unwrap(),
+                CalDateType::Inclusive
+            )
+        );
+    }
+
+    #[test]
     fn datetime_tz() {
         let prop = "DTSTART;TZID=Europe/Berlin:20040102T081000"
             .parse::<Property>()

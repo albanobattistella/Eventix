@@ -69,7 +69,7 @@ impl Property {
     pub fn has_param_value(&self, name: &str, value: &str) -> bool {
         matches!(
             self.params.iter().find(|p| p.name() == name),
-            Some(param) if param.value() == value
+            Some(param) if param.value().eq_ignore_ascii_case(value)
         )
     }
 
@@ -416,5 +416,16 @@ mod tests {
             prop.params(),
             [Parameter::new("RELATED".to_string(), "END".to_string())]
         );
+    }
+
+    #[test]
+    fn quoted_enum_param_values_match_case_insensitively() {
+        let date = "DTSTART;VALUE=\"date\":20250101"
+            .parse::<Property>()
+            .unwrap();
+        assert!(date.has_param_value("VALUE", "DATE"));
+
+        let trigger = "TRIGGER;RELATED=\"end\":PT5M".parse::<Property>().unwrap();
+        assert!(trigger.has_param_value("RELATED", "END"));
     }
 }
