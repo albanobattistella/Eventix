@@ -42,6 +42,38 @@ async fn discover_collection_succeeds() {
 }
 
 #[tokio::test]
+async fn add_calendar_creates_remote_calendar_visible_to_other_peer() {
+    if let Some(msg) = check_requirements() {
+        eprintln!("{msg}");
+        return;
+    }
+
+    let pair = RadicalePair::new().await;
+    let observer = pair.spawn_peer();
+    assert!(
+        !observer.calendar_dir(REMOTE_CALENDAR_FOLDER).exists(),
+        "observer cache should not exist before addcal test"
+    );
+
+    let consumer_cal = pair
+        .consumer()
+        .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
+        .await;
+    assert!(!consumer_cal.is_empty());
+
+    let json = observer.discover_collection().await;
+    assert_eq!(json["changed"], true);
+    assert_eq!(
+        json["collections"][COL_ID],
+        serde_json::json!({"Success": true})
+    );
+    assert!(
+        observer.calendar_dir(REMOTE_CALENDAR_FOLDER).exists(),
+        "expected discover to cache the remotely created calendar"
+    );
+}
+
+#[tokio::test]
 async fn sync_collection_pulls_remote_event_into_store() {
     if let Some(msg) = check_requirements() {
         eprintln!("{msg}");
@@ -225,4 +257,82 @@ async fn reload_calendar_refreshes_only_the_selected_calendar() {
     pair.consumer()
         .assert_store_summary(&personal_uid, "Locally Modified Personal")
         .await;
+}
+
+#[tokio::test]
+async fn delete_calendar_by_folder_removes_remote_calendar_for_other_peer() {
+    if let Some(msg) = check_requirements() {
+        eprintln!("{msg}");
+        return;
+    }
+
+    let pair = RadicalePair::new().await;
+    let observer_before_delete = pair.spawn_peer();
+    let producer_cal = pair
+        .producer()
+        .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
+        .await;
+    let consumer_cal = pair
+        .consumer()
+        .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
+        .await;
+
+    pair.producer()
+        .create_and_sync_todo(&producer_cal, "Calendar To Delete")
+        .await
+        .unwrap();
+    let uid = pair.producer().uid_for_summary("Calendar To Delete").await;
+
+    pair.consumer().discover_collection().await;
+    pair.consumer().sync_collection().await;
+    pair.consumer()
+        .assert_store_summary(&uid, "Calendar To Delete")
+        .await;
+
+    let json = observer_before_delete.discover_collection().await;
+    assert_eq!(json["changed"], true);
+    assert_eq!(
+        json["collections"][COL_ID],
+        serde_json::json!({"Success": true})
+    );
+    assert!(
+        observer_before_delete
+            .calendar_dir(REMOTE_CALENDAR_FOLDER)
+            .exists(),
+        "observer should see the remote calendar before deletion"
+    );
+
+    pair.consumer()
+        .delete_calendar_by_folder(REMOTE_CALENDAR_FOLDER)
+        .await;
+
+    let observer_after_delete = pair.spawn_peer();
+    let json = observer_after_delete.discover_collection().await;
+    assert_eq!(json["changed"], true);
+    assert_eq!(
+        json["collections"][COL_ID],
+        serde_json::json!({"Success": true})
+    );
+    assert!(
+        !observer_after_delete
+            .calendar_dir(REMOTE_CALENDAR_FOLDER)
+            .exists(),
+        "fresh observer should not discover the deleted remote calendar"
+    );
+
+    let json = pair.consumer().discover_collection().await;
+    assert_eq!(json["changed"], true);
+    assert_eq!(
+        json["collections"][COL_ID],
+        serde_json::json!({"Success": true})
+    );
+    assert_eq!(json["calendars"][consumer_cal], false);
+    assert!(
+        !pair
+            .consumer()
+            .calendar_dir(REMOTE_CALENDAR_FOLDER)
+            .exists(),
+        "consumer local cache should be removed for the deleted calendar"
+    );
+    pair.consumer().assert_store_missing(&uid).await;
 }

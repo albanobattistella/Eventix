@@ -212,6 +212,15 @@ impl RadicalePeer {
             .expect("created calendar does not exist?")
     }
 
+    pub async fn delete_calendar_by_folder(&self, folder: &str) {
+        let (status, body) = post_query(
+            make_calendars_api_router(self.state.clone()),
+            &format!("/api/calendars/calop?col_id={COL_ID}&folder={folder}&op=Delete"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "unexpected body:\n{body}");
+    }
+
     pub async fn create_todo(&self, cal_id: &str, summary: &str) -> anyhow::Result<()> {
         let body = encode_form(&[
             ("quicktodo_calendar", cal_id),
@@ -291,6 +300,14 @@ impl RadicalePeer {
             .find(|comp| comp.rid().is_none())
             .expect("base component present");
         assert_eq!(component.summary().map(String::as_str), Some(expected));
+    }
+
+    pub async fn assert_store_missing(&self, uid: &str) {
+        let locked = self.state.lock().await;
+        assert!(
+            locked.store().file_by_id(uid).is_none(),
+            "unexpected store entry for uid '{uid}'"
+        );
     }
 
     pub fn calendar_dir(&self, folder: &str) -> PathBuf {
@@ -375,5 +392,11 @@ impl RadicalePair {
 
     pub fn producer(&self) -> &RadicalePeer {
         &self.producer
+    }
+
+    pub fn spawn_peer(&self) -> RadicalePeer {
+        let (state, tmp) =
+            crate::helper::make_state_from_col(Self::make_empty_collection(self._server.url()));
+        RadicalePeer::new(state, tmp)
     }
 }
