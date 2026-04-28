@@ -697,6 +697,22 @@ impl CalRRule {
         Tz2::Offset: Copy,
         Tz3::Offset: Copy,
     {
+        self.dates_between_with_until(dtstart, dtdur, start, end, None)
+    }
+
+    pub(crate) fn dates_between_with_until<Tz1: TimeZone, Tz2: TimeZone, Tz3: TimeZone>(
+        &self,
+        dtstart: DateTime<Tz1>,
+        dtdur: Option<Duration>,
+        start: DateTime<Tz2>,
+        end: DateTime<Tz3>,
+        until_override: Option<DateTime<Utc>>,
+    ) -> RecurIterator<'_>
+    where
+        Tz1::Offset: Copy,
+        Tz2::Offset: Copy,
+        Tz3::Offset: Copy,
+    {
         let dtstart = dtstart.naive_local().and_utc();
         let start = start.naive_local().and_utc();
         let end = end.naive_local().and_utc();
@@ -707,7 +723,9 @@ impl CalRRule {
         // one interval further means that we will consider the December and might set the day to
         // something else, which might indeed be in the range.
         let beyond_end = next_date(end, self.freq, interval).unwrap_or(end);
-        let until = if let Some(ref until) = self.until {
+        let until = if let Some(until) = until_override {
+            until.min(beyond_end)
+        } else if let Some(ref until) = self.until {
             DateContext::system()
                 .date(until)
                 .resolved_end(&Tz::UTC)

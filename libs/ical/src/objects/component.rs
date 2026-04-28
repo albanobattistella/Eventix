@@ -11,8 +11,9 @@ use std::io::BufRead;
 use tracing::warn;
 
 use crate::objects::{
-    CalAlarm, CalAttendee, CalDate, CalDuration, CalEvent, CalOrganizer, CalRRule, CalTodo,
-    CalendarTimeZoneResolver, DateContext, EventLike, ResolvedDateTime, UpdatableEventLike,
+    CalAlarm, CalAttendee, CalDate, CalDateTime, CalDuration, CalEvent, CalOrganizer, CalRRule,
+    CalTodo, CalendarTimeZoneResolver, DateContext, EventLike, ResolvedDateTime,
+    UpdatableEventLike,
 };
 use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
 use crate::util;
@@ -241,15 +242,30 @@ impl EventLikeComponent {
     }
 
     fn check_rrule_until_matches_start(&self) {
-        if let (Some(start), Some(until)) = (
-            self.start.as_ref(),
-            self.rrule.as_ref().and_then(CalRRule::until),
-        ) && !start.is_same_value_type(until)
-        {
-            warn!(
-                "RRULE UNTIL must use the same value type as DTSTART: DTSTART={start:?}, UNTIL={until:?}"
-            );
-        }
+        let Some(start) = self.start.as_ref() else {
+            return;
+        };
+        let Some(until) = self.rrule.as_ref().and_then(CalRRule::until) else {
+            return;
+        };
+
+        let valid = match start {
+            CalDate::Date(_, _) => matches!(until, CalDate::Date(_, _)),
+            CalDate::DateTime(CalDateTime::Floating(_)) => {
+                matches!(until, CalDate::DateTime(CalDateTime::Floating(_)))
+            }
+            CalDate::DateTime(CalDateTime::Utc(_)) => {
+                matches!(until, CalDate::DateTime(CalDateTime::Utc(_)))
+            }
+            CalDate::DateTime(CalDateTime::Timezone(_, _)) => {
+                matches!(until, CalDate::DateTime(CalDateTime::Utc(_)))
+            }
+        };
+
+        warn!(
+            valid,
+            "RRULE UNTIL is incompatible with DTSTART: DTSTART={start:?}, UNTIL={until:?}"
+        );
     }
 
     fn check_recurrence_id_matches_start(&self) {
@@ -745,11 +761,28 @@ impl CalComponent {
             };
 
             let dtstart = resolver.pseudo_local_date_start(dtstart, &start.timezone());
-            let dates = rrule.dates_between(dtstart, self.time_duration(), start, end);
+            let until_override = match (self.start(), rrule.until()) {
+                (
+                    Some(CalDate::DateTime(CalDateTime::Timezone(_, tzid))),
+                    Some(CalDate::DateTime(CalDateTime::Utc(until_utc))),
+                ) => Some(
+                    until_utc
+                        .with_timezone(&tzid.parse::<Tz>().unwrap_or(Tz::UTC))
+                        .naive_local()
+                        .and_utc(),
+                ),
+                _ => None,
+            };
+
+            let dates = rrule.dates_between_with_until(
+                dtstart,
+                self.time_duration(),
+                start,
+                end,
+                until_override,
+            );
             let tzid = self.start().and_then(|date| match date {
-                CalDate::DateTime(crate::objects::CalDateTime::Timezone(_, tzid)) => {
-                    Some(tzid.clone())
-                }
+                CalDate::DateTime(CalDateTime::Timezone(_, tzid)) => Some(tzid.clone()),
                 _ => None,
             });
             let fallback = start.timezone();
