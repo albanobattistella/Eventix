@@ -58,8 +58,7 @@ async fn run_complete(
         // set the priority as is required by MS exchange as soon as TODOs are completed - unsure
         // why; we don't care about the priority at the moment and thus are fine with any value.
         td.set_priority(Some(PRIORITY_MEDIUM));
-        td.set_last_modified(CalDate::now());
-        td.set_stamp(CalDate::now());
+        td.touch();
         Ok(())
     };
 

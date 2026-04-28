@@ -66,7 +66,7 @@ fn action_update(
     };
 
     let base = file
-        .component_with_mut(|c| c.uid() == &req.uid && c.rid().is_none())
+        .component_with(|c| c.uid() == &req.uid && c.rid().is_none())
         .context("Unable to find base component")?;
     let ctype = base.ctype();
 
@@ -115,11 +115,18 @@ fn action_update(
         let rid = rid.unwrap();
 
         // end the series before this occurrence
-        let mut old_rrule = base.rrule().unwrap().clone();
-        let old_start = base.start().unwrap().clone();
         let until = CalDate::new_datetime(rid.as_naive_date(), None, &event_tz);
-        old_rrule.set_until(until);
-        base.set_rrule(Some(old_rrule));
+        let old_start = {
+            let base = file
+                .component_with_mut(|c| c.uid() == &req.uid && c.rid().is_none())
+                .context("Unable to find base component")?;
+            let mut old_rrule = base.rrule().unwrap().clone();
+            let old_start = base.start().unwrap().clone();
+            old_rrule.set_until(until);
+            base.set_rrule(Some(old_rrule));
+            base.touch();
+            old_start
+        };
 
         // delete all future overwrites
         file.calendar_mut().delete_components(|c| {
@@ -205,7 +212,11 @@ fn action_update(
                 let tz: Tz = event_tz
                     .parse()
                     .map_err(|_| anyhow!("Invalid timezone: {}", event_tz))?;
-                if let Some(new_start) = new_start {
+                let should_shift_series =
+                    new_start.as_ref() != comp.start() || new_end.as_ref() != comp.end_or_due();
+                if let Some(new_start) = new_start
+                    && should_shift_series
+                {
                     file.change_start(&req.uid, new_start, new_end, &tz)
                         .context("Shifting overwrite RIDs failed")?;
                 }

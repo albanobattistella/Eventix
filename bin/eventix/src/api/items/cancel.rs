@@ -75,8 +75,7 @@ async fn run_cancel(
         c.as_event_mut()
             .unwrap()
             .set_status(Some(CalEventStatus::Cancelled));
-        c.set_last_modified(CalDate::now());
-        c.set_stamp(CalDate::now());
+        c.touch();
         Ok(())
     };
 

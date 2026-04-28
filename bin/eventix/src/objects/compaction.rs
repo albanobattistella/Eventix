@@ -204,8 +204,7 @@ pub trait CompAction {
             comp.set_priority(Some(PRIORITY_MEDIUM));
         }
 
-        comp.set_last_modified(CalDate::now());
-        comp.set_stamp(CalDate::now());
+        comp.touch();
         Ok(())
     }
 }

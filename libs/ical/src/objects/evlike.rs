@@ -49,6 +49,13 @@ pub trait EventLike: PropertyProducer {
     /// See <https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.3>.
     fn last_modified(&self) -> Option<&CalDate>;
 
+    /// Returns the revision sequence of this calendar object (SEQUENCE).
+    ///
+    /// Missing sequence values are treated as revision 0 by mutating code paths.
+    ///
+    /// See <https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.4>.
+    fn sequence(&self) -> Option<u32>;
+
     /// Returns the beginning of this calendar object (DTSTART).
     ///
     /// For recurrent objects, this property is mandatory, because it marks the beginning of the
@@ -247,6 +254,9 @@ pub trait UpdatableEventLike: EventLike {
     /// Sets the date of the last modification.
     fn set_stamp(&mut self, date: CalDate);
 
+    /// Sets the revision sequence.
+    fn set_sequence(&mut self, sequence: Option<u32>);
+
     /// Sets the recurrence rule.
     ///
     /// Note that the recurrence rule being `Some` requires the recurrence id to be `None`.
@@ -280,6 +290,18 @@ pub trait UpdatableEventLike: EventLike {
 
     /// Sets the priority.
     fn set_priority(&mut self, prio: Option<u8>);
+
+    /// Updates revision metadata with the given timestamp.
+    fn touch_with(&mut self, now: CalDate) {
+        self.set_sequence(Some(self.sequence().unwrap_or(0).saturating_add(1)));
+        self.set_last_modified(now.clone());
+        self.set_stamp(now);
+    }
+
+    /// Updates revision metadata with the current timestamp.
+    fn touch(&mut self) {
+        self.touch_with(CalDate::now());
+    }
 }
 
 #[cfg(test)]
@@ -384,5 +406,18 @@ mod tests {
         assert!(comp.is_owned_by(Some("MAILTO:owner@example.com")));
         // different user
         assert!(!comp.is_owned_by(Some("other@example.com")));
+    }
+
+    #[test]
+    fn touch_adds_and_increments_sequence() {
+        let mut comp = base_component();
+
+        assert_eq!(comp.sequence(), None);
+
+        comp.touch();
+        assert_eq!(comp.sequence(), Some(1));
+
+        comp.touch();
+        assert_eq!(comp.sequence(), Some(2));
     }
 }

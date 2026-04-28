@@ -81,8 +81,7 @@ async fn run_respond(
             atts.push(att);
         }
         c.set_attendees(Some(atts));
-        c.set_last_modified(CalDate::now());
-        c.set_stamp(CalDate::now());
+        c.touch();
         Ok(())
     };
 

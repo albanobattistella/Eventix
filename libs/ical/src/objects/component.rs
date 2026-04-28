@@ -36,6 +36,7 @@ pub struct EventLikeComponent {
     stamp: CalDate,
     created: Option<CalDate>,
     last_mod: Option<CalDate>,
+    sequence: Option<u32>,
     start: Option<CalDate>,
     duration: Option<CalDuration>,
     summary: Option<String>,
@@ -61,6 +62,7 @@ impl EventLikeComponent {
             stamp: CalDate::default(),
             created: None,
             last_mod: None,
+            sequence: None,
             start: None,
             duration: None,
             summary: None,
@@ -120,6 +122,13 @@ impl EventLikeComponent {
             }
             "DTSTAMP" => {
                 self.stamp = prop.try_into()?;
+            }
+            "SEQUENCE" => {
+                let sequence = prop.value().parse::<i64>()?;
+                if sequence < 0 {
+                    return Err(ParseError::InvalidSequence(sequence));
+                }
+                self.sequence = Some(sequence as u32);
             }
             "DTSTART" => {
                 self.start = Some(prop.try_into()?);
@@ -222,6 +231,9 @@ impl EventLikeComponent {
     fn collapse_against_base(&mut self, base: &EventLikeComponent) {
         Self::collapse_optional(&mut self.created, base.created.as_ref());
         Self::collapse_optional(&mut self.last_mod, base.last_mod.as_ref());
+        if self.sequence == base.sequence {
+            self.sequence = None;
+        }
         Self::collapse_optional(&mut self.start, base.start.as_ref());
         Self::collapse_optional(&mut self.duration, base.duration.as_ref());
         Self::collapse_optional(&mut self.summary, base.summary.as_ref());
@@ -310,6 +322,9 @@ impl PropertyProducer for EventLikeComponent {
             props.push(last_mod.to_prop("LAST-MODIFIED"));
         }
         props.push(self.stamp.to_prop("DTSTAMP"));
+        if let Some(sequence) = self.sequence {
+            props.push(Property::new("SEQUENCE", vec![], sequence.to_string()));
+        }
         if let Some(ref dtstart) = self.start {
             props.push(dtstart.to_prop("DTSTART"));
         }
@@ -379,6 +394,10 @@ impl EventLike for EventLikeComponent {
 
     fn last_modified(&self) -> Option<&CalDate> {
         self.last_mod.as_ref()
+    }
+
+    fn sequence(&self) -> Option<u32> {
+        self.sequence
     }
 
     fn start(&self) -> Option<&CalDate> {
@@ -467,6 +486,10 @@ impl UpdatableEventLike for EventLikeComponent {
     fn set_stamp(&mut self, date: CalDate) {
         Self::assert_utc_only("DTSTAMP", &date);
         self.stamp = date;
+    }
+
+    fn set_sequence(&mut self, sequence: Option<u32>) {
+        self.sequence = sequence;
     }
 
     fn set_rrule(&mut self, rrule: Option<CalRRule>) {
@@ -629,6 +652,7 @@ impl CalComponent {
             stamp: over.stamp.clone(),
             created: over.created.clone().or_else(|| base.created.clone()),
             last_mod: over.last_mod.clone().or_else(|| base.last_mod.clone()),
+            sequence: over.sequence.or(base.sequence),
             start,
             duration: over.duration.or(base.duration),
             summary: over.summary.clone().or_else(|| base.summary.clone()),
@@ -921,6 +945,10 @@ impl EventLike for CalComponent {
         get_with_ev_or_todo!(self, last_modified)
     }
 
+    fn sequence(&self) -> Option<u32> {
+        get_with_ev_or_todo!(self, sequence)
+    }
+
     fn start(&self) -> Option<&CalDate> {
         get_with_ev_or_todo!(self, start)
     }
@@ -1010,6 +1038,10 @@ impl UpdatableEventLike for CalComponent {
         set_with_ev_or_todo!(self, set_stamp, date);
     }
 
+    fn set_sequence(&mut self, sequence: Option<u32>) {
+        set_with_ev_or_todo!(self, set_sequence, sequence);
+    }
+
     fn set_rrule(&mut self, rrule: Option<CalRRule>) {
         set_with_ev_or_todo!(self, set_rrule, rrule);
     }
@@ -1064,6 +1096,7 @@ mod tests {
             "CREATED:20250101T120000Z",
             "LAST-MODIFIED:20250101T121500Z",
             "DTSTAMP:20250101T123000Z",
+            "SEQUENCE:7",
             "DTSTART:20250102T090000Z",
             "DURATION:PT45M",
             "SUMMARY:Quarterly planning",
@@ -1108,6 +1141,7 @@ mod tests {
                 String::from("CREATED:20250101T120000Z"),
                 String::from("LAST-MODIFIED:20250101T121500Z"),
                 String::from("DTSTAMP:20250101T123000Z"),
+                String::from("SEQUENCE:7"),
                 String::from("DTSTART:20250102T090000Z"),
                 String::from("DURATION:PT45M"),
                 String::from("SUMMARY:Quarterly planning"),
@@ -1153,6 +1187,14 @@ mod tests {
             categories.to_string(),
             "CATEGORIES:Engineering\\,Platform, Operations"
         );
+    }
+
+    #[test]
+    fn parse_prop_rejects_negative_sequence() {
+        let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
+        let err = parse_prop_line(&mut comp, "SEQUENCE:-1").unwrap_err();
+
+        assert_eq!(err, ParseError::InvalidSequence(-1));
     }
 
     #[test]

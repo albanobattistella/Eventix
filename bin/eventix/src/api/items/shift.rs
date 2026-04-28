@@ -104,8 +104,7 @@ async fn run_shift(
         c.set_start_checked(Some(start), &ctx, local_tz)?;
         c.set_end_checked(Some(end), &ctx, local_tz)?;
 
-        c.set_last_modified(CalDate::now());
-        c.set_stamp(CalDate::now());
+        c.touch();
         Ok(())
     };
 

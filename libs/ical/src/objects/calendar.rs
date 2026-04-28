@@ -145,23 +145,38 @@ impl Calendar {
     }
 
     fn checked_add(&mut self, comp: CalComponent) {
+        if let Some(existing) = self
+            .comps
+            .iter_mut()
+            .find(|c| c.uid() == comp.uid() && c.rid() == comp.rid())
+        {
+            if comp.sequence().unwrap_or(0) > existing.sequence().unwrap_or(0) {
+                let replaced = std::mem::replace(existing, comp);
+                self.add_as_unknown(replaced);
+            } else {
+                self.add_as_unknown(comp);
+            }
         // if it's a base component and we already have the same UID, just pretend we don't know it
-        if comp.rid().is_none() && self.comps.iter().any(|c| c.uid() == comp.uid()) {
-            let props = comp.to_props();
-            // ignore the first and last property as this is BEGIN:*/END:*, which Unknown also adds
-            let len = props.len();
-            let props = props.into_iter().skip(1).take(len - 2).collect();
-            self.unknown.push(Unknown {
-                name: match comp.ctype() {
-                    CalCompType::Event => String::from("VEVENT"),
-                    CalCompType::Todo => String::from("VTODO"),
-                },
-                props,
-            });
+        } else if comp.rid().is_none() && self.comps.iter().any(|c| c.uid() == comp.uid()) {
+            self.add_as_unknown(comp);
         } else {
             self.comps.push(comp);
         }
         self.invalidate_timezone_resolver();
+    }
+
+    fn add_as_unknown(&mut self, comp: CalComponent) {
+        let props = comp.to_props();
+        // ignore the first and last property as this is BEGIN:*/END:*, which Unknown also adds
+        let len = props.len();
+        let props = props.into_iter().skip(1).take(len - 2).collect();
+        self.unknown.push(Unknown {
+            name: match comp.ctype() {
+                CalCompType::Event => String::from("VEVENT"),
+                CalCompType::Todo => String::from("VTODO"),
+            },
+            props,
+        });
     }
 
     /// Validates all component dates against the given local timezone.
@@ -1276,6 +1291,53 @@ END:VCALENDAR\n";
 
         let unknown = &cal.unknown[0];
         assert_eq!(unknown.name, "VTODO");
+    }
+
+    #[test]
+    fn duplicate_component_with_same_uid_and_rid_keeps_higher_sequence() {
+        let input = "BEGIN:VCALENDAR\n\
+VERSION:2.0\n\
+BEGIN:VEVENT\n\
+UID:series-uid\n\
+DTSTAMP:20250101T000000Z\n\
+DTSTART:20250101T090000Z\n\
+SUMMARY:Base\n\
+END:VEVENT\n\
+BEGIN:VEVENT\n\
+UID:series-uid\n\
+RECURRENCE-ID:20250102T090000Z\n\
+DTSTAMP:20250101T000000Z\n\
+SEQUENCE:1\n\
+DTSTART:20250102T090000Z\n\
+SUMMARY:Older\n\
+END:VEVENT\n\
+BEGIN:VEVENT\n\
+UID:series-uid\n\
+RECURRENCE-ID:20250102T090000Z\n\
+DTSTAMP:20250101T000000Z\n\
+SEQUENCE:3\n\
+DTSTART:20250102T090000Z\n\
+SUMMARY:Newer\n\
+END:VEVENT\n\
+END:VCALENDAR\n";
+
+        let cal = input.parse::<Calendar>().unwrap();
+        let overwrite = cal
+            .components()
+            .iter()
+            .find(|comp| comp.rid().is_some())
+            .unwrap();
+
+        assert_eq!(overwrite.sequence(), Some(3));
+        assert_eq!(overwrite.summary(), Some(&"Newer".to_string()));
+        assert_eq!(cal.unknown.len(), 1);
+        assert_eq!(cal.unknown[0].name, "VEVENT");
+        assert!(
+            cal.unknown[0]
+                .props
+                .iter()
+                .any(|prop| prop.to_string() == "SUMMARY:Older")
+        );
     }
 
     #[test]

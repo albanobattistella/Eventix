@@ -129,6 +129,7 @@ async fn series_edit_basic_fields() {
     assert_eq!(comp.summary(), Some(&"Updated title".to_string()));
     assert_eq!(comp.location(), Some(&"Room 42".to_string()));
     assert_eq!(comp.description(), Some(&"A new description".to_string()));
+    assert_eq!(comp.sequence(), Some(1));
 }
 
 /// Adding a relative alarm to an event that previously had none (Series mode).
