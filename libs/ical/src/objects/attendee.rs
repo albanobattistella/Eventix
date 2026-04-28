@@ -4,7 +4,10 @@
 
 use std::{fmt, str::FromStr};
 
+use tracing::warn;
+
 use crate::parser::{Parameter, ParseError, Property};
+use crate::util;
 
 /// The participation role
 ///
@@ -116,6 +119,12 @@ pub struct CalAttendee {
 }
 
 impl CalAttendee {
+    fn warn_if_non_uri_cal_address(&self) {
+        if !self.address.contains(':') {
+            warn!("ATTENDEE should use a CAL-ADDRESS URI: {}", self.address);
+        }
+    }
+
     /// Creates a new attendee with given address.
     pub fn new(address: String) -> Self {
         Self {
@@ -159,15 +168,17 @@ impl CalAttendee {
     /// Note that this method keeps the capitalization as it is. See [`Self::address`] if you need
     /// the address for comparisons.
     pub fn org_address(&self) -> &str {
-        match self.address.strip_prefix("mailto:") {
-            Some(addr) => addr,
-            None => &self.address,
-        }
+        util::strip_mailto_prefix(&self.address).unwrap_or(&self.address)
     }
 
     /// Returns the address with the "mailto:" prefix removed and in lower case.
     pub fn address(&self) -> String {
-        self.org_address().to_lowercase()
+        util::normalized_mail_address(&self.address).unwrap_or_else(|| self.address.to_lowercase())
+    }
+
+    /// Returns true if the attendee matches the given email address.
+    pub fn matches_email<S: AsRef<str>>(&self, email: S) -> bool {
+        util::mail_addresses_match(&self.address, email.as_ref())
     }
 
     /// Returns a pretty name for this attendee.
@@ -185,6 +196,8 @@ impl CalAttendee {
 
     /// Builds and returns a [`Property`] for this attendee.
     pub fn to_prop(&self) -> Property {
+        self.warn_if_non_uri_cal_address();
+
         let mut params = Vec::new();
         if let Some(role) = &self.role {
             params.push(Parameter::new("ROLE", format!("{role}")));
@@ -409,8 +422,21 @@ mod tests {
     }
 
     #[test]
+    fn attendee_to_prop_preserves_bare_email_for_round_trip() {
+        let att = CalAttendee::new("test@example.com".to_string());
+        let prop = att.to_prop();
+        assert_eq!(prop.value(), "test@example.com");
+    }
+
+    #[test]
     fn attendee_org_address_without_mailto() {
         let att = CalAttendee::new("test@example.com".to_string());
+        assert_eq!(att.org_address(), "test@example.com");
+    }
+
+    #[test]
+    fn attendee_org_address_handles_uppercase_mailto() {
+        let att = CalAttendee::new("MAILTO:test@example.com".to_string());
         assert_eq!(att.org_address(), "test@example.com");
     }
 
@@ -418,6 +444,13 @@ mod tests {
     fn attendee_address_lowercase() {
         let att = CalAttendee::new("mailto:Test.Example@Example.COM".to_string());
         assert_eq!(att.address(), "test.example@example.com");
+    }
+
+    #[test]
+    fn attendee_matches_email_case_insensitively_for_mailto_scheme() {
+        let att = CalAttendee::new("MAILTO:Test.Example@Example.COM".to_string());
+        assert!(att.matches_email("mailto:test.example@example.com"));
+        assert!(att.matches_email("test.example@example.com"));
     }
 
     #[test]

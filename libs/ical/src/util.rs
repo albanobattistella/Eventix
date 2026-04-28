@@ -13,6 +13,31 @@ use chrono_tz::Tz;
 
 use crate::objects::CalLocale;
 
+/// Returns the part after a `mailto:` URI scheme, matched ASCII-case-insensitively.
+pub fn strip_mailto_prefix(address: &str) -> Option<&str> {
+    address
+        .get(..7)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("mailto:"))
+        .map(|_| &address[7..])
+}
+
+/// Returns a normalized email-ish address for comparisons.
+///
+/// `mailto:` is handled ASCII-case-insensitively. Bare addresses without any URI scheme are also
+/// accepted for lenient matching.
+pub fn normalized_mail_address(address: &str) -> Option<String> {
+    strip_mailto_prefix(address)
+        .or_else(|| (!address.contains(':')).then_some(address))
+        .map(|addr| addr.to_lowercase())
+}
+
+/// Returns true if the two addresses match under lenient CAL-ADDRESS email semantics.
+pub fn mail_addresses_match(left: &str, right: &str) -> bool {
+    normalized_mail_address(left)
+        .zip(normalized_mail_address(right))
+        .is_some_and(|(left, right)| left == right)
+}
+
 /// Resolves a [`MappedLocalTime`] to a single [`DateTime`].
 ///
 /// For unambiguous times, returns the single result. For ambiguous times (DST
@@ -336,6 +361,22 @@ mod tests {
     use super::*;
 
     use chrono::TimeZone;
+
+    #[test]
+    fn mailto_helpers_are_ascii_case_insensitive() {
+        assert_eq!(
+            strip_mailto_prefix("MaIlTo:User@Example.com"),
+            Some("User@Example.com")
+        );
+        assert_eq!(
+            normalized_mail_address("MaIlTo:User@Example.com"),
+            Some("user@example.com".to_string())
+        );
+        assert!(mail_addresses_match(
+            "MaIlTo:User@Example.com",
+            "mailto:user@example.com"
+        ));
+    }
 
     #[test]
     fn week_start_basics() {

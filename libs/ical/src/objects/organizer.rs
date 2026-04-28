@@ -4,7 +4,10 @@
 
 use std::fmt::Display;
 
+use tracing::warn;
+
 use crate::parser::{Parameter, ParseError, Property};
+use crate::util;
 
 /// Represents an organizers of an event or TODO.
 ///
@@ -18,6 +21,12 @@ pub struct CalOrganizer {
 }
 
 impl CalOrganizer {
+    fn warn_if_non_uri_cal_address(&self) {
+        if !self.address.contains(':') {
+            warn!("ORGANIZER should use a CAL-ADDRESS URI: {}", self.address);
+        }
+    }
+
     /// Creates a new organizer instance with `name` as the common name and given email address.
     pub fn new_named<T: ToString, S: Display>(name: T, address: S) -> Self {
         Self {
@@ -30,10 +39,12 @@ impl CalOrganizer {
 
     /// Returns the address with the "mailto:" prefix removed.
     pub fn address(&self) -> &str {
-        match self.address.strip_prefix("mailto:") {
-            Some(addr) => addr,
-            None => &self.address,
-        }
+        util::strip_mailto_prefix(&self.address).unwrap_or(&self.address)
+    }
+
+    /// Returns true if the organizer matches the given email address.
+    pub fn matches_email<S: AsRef<str>>(&self, email: S) -> bool {
+        util::mail_addresses_match(&self.address, email.as_ref())
     }
 
     /// Returns the common name of the organizer.
@@ -50,6 +61,8 @@ impl CalOrganizer {
 
     /// Turns this organizer into a [`Property`].
     pub fn to_prop(&self) -> Property {
+        self.warn_if_non_uri_cal_address();
+
         let mut params = Vec::new();
         if let Some(cn) = &self.common_name {
             params.push(Parameter::new("CN", cn.clone()));
@@ -137,6 +150,32 @@ mod tests {
         let expected = "ORGANIZER;CN=John Smith;SENT-BY=\"mailto:jane_doe@example.com\";\
 X-FOO=bar:mailto:jsmith@example.com";
         assert_eq!(format!("{}", prop), expected);
+    }
+
+    #[test]
+    fn to_prop_preserves_bare_email_for_round_trip() {
+        let org = CalOrganizer {
+            address: "jsmith@example.com".to_string(),
+            common_name: Some("John Smith".to_string()),
+            sent_by: None,
+            params: vec![],
+        };
+
+        let prop = org.to_prop();
+        assert_eq!(prop.value(), "jsmith@example.com");
+    }
+
+    #[test]
+    fn matches_email_is_case_insensitive_for_mailto_scheme() {
+        let org = CalOrganizer {
+            address: "MAILTO:JSmith@example.com".to_string(),
+            common_name: None,
+            sent_by: None,
+            params: vec![],
+        };
+
+        assert!(org.matches_email("mailto:jsmith@example.com"));
+        assert!(org.matches_email("jsmith@example.com"));
     }
 
     #[test]

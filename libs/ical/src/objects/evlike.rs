@@ -139,11 +139,7 @@ pub trait EventLike: PropertyProducer {
     /// address.
     fn is_owned_by<S: AsRef<str>>(&self, user: Option<S>) -> bool {
         match (self.organizer(), user) {
-            (Some(ev_org), Some(user))
-                if ev_org.address().to_lowercase() == user.as_ref().to_lowercase() =>
-            {
-                true
-            }
+            (Some(ev_org), Some(user)) => ev_org.matches_email(user),
             (Some(_), _) => false,
             (None, _) => true,
         }
@@ -165,10 +161,7 @@ pub trait EventLike: PropertyProducer {
     /// or not having a status is considered as [`CalPartStat::NeedsAction`].
     fn attendee_status<M: AsRef<str>>(&self, user_mail: M) -> Option<CalPartStat> {
         self.attendees().map(|atts| {
-            if let Some(att) = atts
-                .iter()
-                .find(|a| a.address() == user_mail.as_ref().to_lowercase())
-            {
+            if let Some(att) = atts.iter().find(|a| a.matches_email(&user_mail)) {
                 att.part_stat().unwrap_or(CalPartStat::NeedsAction)
             } else {
                 // if the user is not part of the list (e.g., invited via mailing list), it's
@@ -347,6 +340,10 @@ mod tests {
             comp.attendee_status("Alice@Example.com"),
             Some(CalPartStat::Accepted)
         );
+        assert_eq!(
+            comp.attendee_status("MAILTO:alice@example.com"),
+            Some(CalPartStat::Accepted)
+        );
 
         // user not listed -> NeedsAction
         assert_eq!(
@@ -384,6 +381,7 @@ mod tests {
         comp.set_organizer(Some(org));
         // matching user (case-insensitive)
         assert!(comp.is_owned_by(Some("Owner@Example.com")));
+        assert!(comp.is_owned_by(Some("MAILTO:owner@example.com")));
         // different user
         assert!(!comp.is_owned_by(Some("other@example.com")));
     }
