@@ -553,10 +553,12 @@ impl Iterator for RecurIterator<'_> {
             }
 
             while self.date <= self.until {
-                if !self.rrule.limited(self.date) {
+                let date_only = self.dtdur.is_none();
+                if !self.rrule.limited(self.date, date_only) {
                     match self.rrule.expand(
                         self.dtstart,
                         self.dtdur,
+                        date_only,
                         self.start,
                         self.end,
                         self.date,
@@ -713,6 +715,7 @@ impl CalRRule {
         Tz2::Offset: Copy,
         Tz3::Offset: Copy,
     {
+        let date_only = dtdur.is_none();
         let dtstart = dtstart.naive_local().and_utc();
         let start = start.naive_local().and_utc();
         let end = end.naive_local().and_utc();
@@ -740,7 +743,7 @@ impl CalRRule {
             dtstart,
             start,
             end,
-            dtdur,
+            dtdur: if date_only { None } else { dtdur },
             date: dtstart,
             until,
             count: 0,
@@ -750,7 +753,7 @@ impl CalRRule {
         }
     }
 
-    fn limited(&self, date: DateTime<Utc>) -> bool {
+    fn limited(&self, date: DateTime<Utc>, date_only: bool) -> bool {
         if let Some(by_month) = &self.by_month
             && self.freq <= CalRRuleFreq::Monthly
             && !by_month.contains(&(date.month() as u8))
@@ -791,20 +794,22 @@ impl CalRRule {
             return true;
         }
 
-        // TODO ignore if event has DTSTART=DATE
-        if let Some(by_hour) = &self.by_hour
+        if !date_only
+            && let Some(by_hour) = &self.by_hour
             && self.freq <= CalRRuleFreq::Hourly
             && !by_hour.iter().any(|&h| h as u32 == date.hour())
         {
             return true;
         }
-        if let Some(by_min) = &self.by_minute
+        if !date_only
+            && let Some(by_min) = &self.by_minute
             && self.freq <= CalRRuleFreq::Minutely
             && !by_min.iter().any(|&m| m as u32 == date.minute())
         {
             return true;
         }
-        if let Some(by_sec) = &self.by_second
+        if !date_only
+            && let Some(by_sec) = &self.by_second
             && self.freq <= CalRRuleFreq::Secondly
             && !by_sec.iter().any(|&s| s as u32 == date.second())
         {
@@ -814,10 +819,12 @@ impl CalRRule {
         false
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn expand(
         &self,
         dtstart: DateTime<Utc>,
         dtdur: Option<Duration>,
+        date_only: bool,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
         date: DateTime<Utc>,
@@ -833,17 +840,20 @@ impl CalRRule {
         let secs = [date.second() as u8];
         let mut secs = secs.as_slice();
 
-        if let Some(by_hour) = &self.by_hour
+        if !date_only
+            && let Some(by_hour) = &self.by_hour
             && self.freq > CalRRuleFreq::Hourly
         {
             hours = by_hour.as_slice();
         }
-        if let Some(by_min) = &self.by_minute
+        if !date_only
+            && let Some(by_min) = &self.by_minute
             && self.freq > CalRRuleFreq::Minutely
         {
             mins = by_min.as_slice();
         }
-        if let Some(by_sec) = &self.by_second
+        if !date_only
+            && let Some(by_sec) = &self.by_second
             && self.freq > CalRRuleFreq::Secondly
         {
             secs = by_sec.as_slice();
@@ -2427,6 +2437,22 @@ mod tests {
         assert_eq!(iter.next().unwrap(), ny_datetime(2023, 9, 4, 4, 0, 0));
         assert_eq!(iter.next().unwrap(), ny_datetime(2023, 9, 4, 8, 0, 0));
         assert_eq!(iter.next().unwrap(), ny_datetime(2023, 9, 5, 4, 0, 0));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn date_dtstart_ignores_byhour() {
+        let dtstart = NaiveDate::from_ymd_opt(2023, 9, 2)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let rrule = "FREQ=DAILY;COUNT=3;BYHOUR=4,8".parse::<CalRRule>().unwrap();
+        let mut iter = rrule.dates_between(dtstart, None, dtstart, dtstart + Duration::days(5));
+
+        assert_eq!(iter.next().unwrap(), dtstart);
+        assert_eq!(iter.next().unwrap(), dtstart + Duration::days(1));
+        assert_eq!(iter.next().unwrap(), dtstart + Duration::days(2));
         assert_eq!(iter.next(), None);
     }
 
