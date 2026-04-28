@@ -232,6 +232,10 @@ impl CalAlarm {
     }
 
     fn check_serializable(&self) {
+        if self.action == CalAction::Display && self.description.is_none() {
+            warn!("DISPLAY alarms should include DESCRIPTION");
+        }
+
         if let CalTrigger::Absolute(date) = &self.trigger
             && !matches!(date, CalDate::DateTime(CalDateTime::Utc(_)))
         {
