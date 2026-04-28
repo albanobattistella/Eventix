@@ -125,7 +125,7 @@ impl EventLikeComponent {
             }
             "SEQUENCE" => {
                 let sequence = prop.value().parse::<i64>()?;
-                if sequence < 0 {
+                if sequence < 0 || sequence > u32::MAX as i64 {
                     return Err(ParseError::InvalidSequence(sequence));
                 }
                 self.sequence = Some(sequence as u32);
