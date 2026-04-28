@@ -274,10 +274,9 @@ impl EventLikeComponent {
             }
         };
 
-        warn!(
-            valid,
-            "RRULE UNTIL is incompatible with DTSTART: DTSTART={start:?}, UNTIL={until:?}"
-        );
+        if !valid {
+            warn!("RRULE UNTIL is incompatible with DTSTART: DTSTART={start:?}, UNTIL={until:?}");
+        }
     }
 
     fn check_recurrence_id_matches_start(&self) {
