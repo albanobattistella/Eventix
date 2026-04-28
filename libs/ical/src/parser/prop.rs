@@ -251,6 +251,7 @@ impl Parameter {
 
     /// Creates a new parameter with given name and values.
     pub fn new_values<N: ToString, V: ToString>(name: N, values: Vec<V>) -> Self {
+        assert!(!values.is_empty());
         Self {
             name: name.to_string(),
             values: values.into_iter().map(|value| value.to_string()).collect(),
