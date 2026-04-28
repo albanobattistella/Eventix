@@ -87,7 +87,7 @@ async fn run_post_alarm(
             &req.uid,
             req.rid.as_ref(),
             req.personal
-                .to_alarms(locale.timezone().name())?
+                .to_alarms(&locale, locale.timezone().name())?
                 .unwrap_or_default(),
         )
     } else {

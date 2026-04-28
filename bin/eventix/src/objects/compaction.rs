@@ -154,7 +154,7 @@ pub trait CompAction {
             comp.set_due_checked(end, ctx, local_tz)?;
         }
 
-        let (cal_alarms, pers_alarms) = self.alarm().to_alarms(&event_tz).unwrap();
+        let (cal_alarms, pers_alarms) = self.alarm().to_alarms(locale, &event_tz).unwrap();
         if let Some(cal_alarms) = cal_alarms {
             comp.set_alarms(Some(cal_alarms));
         } else {

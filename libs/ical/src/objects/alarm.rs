@@ -173,6 +173,11 @@ impl CalAlarm {
         }
     }
 
+    /// Sets the description shown for this alarm.
+    pub fn set_description(&mut self, description: Option<String>) {
+        self.description = description;
+    }
+
     /// Returns the action of the alarm.
     pub fn action(&self) -> CalAction {
         self.action
@@ -606,13 +611,14 @@ END:VALARM\r
 
     #[test]
     fn alarm_human_relative_positive() {
-        let alarm = CalAlarm::new(
+        let mut alarm = CalAlarm::new(
             CalAction::Display,
             CalTrigger::Relative {
                 related: CalRelated::End,
                 duration: Duration::minutes(30).into(),
             },
         );
+        alarm.set_description(Some("Reminder".to_string()));
         let locale = CalLocaleEn;
         let human = alarm.human(&locale);
         assert_eq!(human.to_string(), "30 minutes after end");
@@ -620,12 +626,13 @@ END:VALARM\r
 
     #[test]
     fn alarm_human_absolute() {
-        let alarm = CalAlarm::new(
+        let mut alarm = CalAlarm::new(
             CalAction::Display,
             CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Utc(
                 Utc.with_ymd_and_hms(2024, 12, 25, 10, 0, 0).unwrap(),
             ))),
         );
+        alarm.set_description(Some("Reminder".to_string()));
         let locale = CalLocaleEn;
         let human = alarm.human(&locale);
         assert_eq!(human.to_string(), "On Wednesday, December 25, 2024 10:00");
@@ -633,17 +640,18 @@ END:VALARM\r
 
     #[test]
     fn alarm_display() {
-        let alarm = CalAlarm::new(
+        let mut alarm = CalAlarm::new(
             CalAction::Display,
             CalTrigger::Relative {
                 related: CalRelated::Start,
                 duration: Duration::minutes(-15).into(),
             },
         );
+        alarm.set_description(Some("Reminder".to_string()));
         let s = alarm.to_string();
         assert_eq!(
             s,
-            "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER;RELATED=START:-PT15M\nEND:VALARM\n"
+            "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER;RELATED=START:-PT15M\nDESCRIPTION:Reminder\nEND:VALARM\n"
         );
     }
 

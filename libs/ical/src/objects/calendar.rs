@@ -612,7 +612,7 @@ SUMMARY:foo bar
   lines
 DESCRIPTION:test!
 CATEGORIES:A,B,MYCAT\r
-ATTENDEE;PARTSTAT=ACCEPTED;CN=\"My,Name\":my@name.org
+ATTENDEE;PARTSTAT=ACCEPTED;CN=\"My,Name\":mailto:my@name.org
 ATTENDEE;CN=test:test@example.com\r
 PRIORITY:7\r
 RID:20221110T111111Z
@@ -680,7 +680,7 @@ DTSTART;TZID=\"My:TZ\":20241024T090000\r
 SUMMARY:foo bartest with\\n multiple\\;\\, lines\r
 DESCRIPTION:test!\r
 CATEGORIES:A,B,MYCAT\r
-ATTENDEE;PARTSTAT=ACCEPTED;CN=\"My,Name\":my@name.org\r
+ATTENDEE;PARTSTAT=ACCEPTED;CN=\"My,Name\":mailto:my@name.org\r
 ATTENDEE;CN=test:test@example.com\r
 PRIORITY:7\r
 RID:20221110T111111Z\r

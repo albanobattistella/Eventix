@@ -115,13 +115,16 @@ fn action_update(
         let rid = rid.unwrap();
 
         // end the series before this occurrence
-        let until = CalDate::new_datetime(rid.as_naive_date(), None, &event_tz);
         let old_start = {
             let base = file
                 .component_with_mut(|c| c.uid() == &req.uid && c.rid().is_none())
                 .context("Unable to find base component")?;
             let mut old_rrule = base.rrule().unwrap().clone();
             let old_start = base.start().unwrap().clone();
+            let until = match &old_start {
+                CalDate::Date(_, _) => CalDate::Date(rid.as_naive_date(), ctype.into()),
+                CalDate::DateTime(_) => rid.to_utc(),
+            };
             old_rrule.set_until(until);
             base.set_rrule(Some(old_rrule));
             base.touch();

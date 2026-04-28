@@ -216,7 +216,11 @@ impl AlarmConfig {
         true
     }
 
-    pub fn to_alarms(&self, event_tz: &str) -> anyhow::Result<Option<Vec<CalAlarm>>> {
+    pub fn to_alarms(
+        &self,
+        locale: &Arc<dyn Locale + Send + Sync>,
+        event_tz: &str,
+    ) -> anyhow::Result<Option<Vec<CalAlarm>>> {
         if let Some(trigger) = self.trigger {
             let duration = match self.durtype {
                 DurType::BeforeStart | DurType::BeforeEnd => -(self.duration as i64),
@@ -246,7 +250,8 @@ impl AlarmConfig {
                     DateContext::system().date_to_utc(&date, &tz)
                 }),
             };
-            let alarm = CalAlarm::new(CalAction::Display, trigger);
+            let mut alarm = CalAlarm::new(CalAction::Display, trigger);
+            alarm.set_description(Some(String::from(locale.translate("Reminder"))));
             Ok(Some(vec![alarm]))
         } else {
             Ok(None)
