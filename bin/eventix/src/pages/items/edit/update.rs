@@ -93,7 +93,11 @@ fn action_update(
         }
         None
     } else {
-        match form.rrule.as_ref().map(|rr| rr.to_rrule(&event_tz)) {
+        let res = form.rrule.as_ref().map(|rr| {
+            let start = form.start_end().as_caldates(locale, ctype.into()).0;
+            rr.to_rrule(start.as_ref())
+        });
+        match res {
             None => None,
             Some(Ok(rrule)) => rrule,
             Some(Err(e)) => {
@@ -122,7 +126,9 @@ fn action_update(
             let mut old_rrule = base.rrule().unwrap().clone();
             let old_start = base.start().unwrap().clone();
             let until = match &old_start {
-                CalDate::Date(_, _) => CalDate::Date(rid.as_naive_date(), ctype.into()),
+                CalDate::Date(_, _) => {
+                    CalDate::Date(rid.as_naive_date().pred_opt().unwrap(), ctype.into())
+                }
                 CalDate::DateTime(_) => rid.to_utc(),
             };
             old_rrule.set_until(until);

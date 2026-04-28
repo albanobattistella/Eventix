@@ -107,12 +107,7 @@ pub trait CompAction {
             return false;
         }
 
-        if self
-            .rrule()
-            .and_then(|rr| rr.to_rrule(&event_tz).unwrap_or(None))
-            .is_some()
-            && start.is_none()
-        {
+        if self.rrule().map(|rr| rr.has_rrule()).unwrap_or(false) && start.is_none() {
             page.add_error(locale.translate("error.repeating_event_start"));
             return false;
         }
