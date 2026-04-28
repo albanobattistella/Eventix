@@ -292,7 +292,7 @@ impl EventLikeComponent {
     fn check_exdate_type_mismatch(&self) {
         if let Some(dtstart) = self.start() {
             for exdate in self.exdates() {
-                if !dtstart.is_same_type(exdate) {
+                if !dtstart.is_same_value_type(exdate) {
                     warn!(
                         "component {} (uid {}) has EXDATE {:?} with different value type than DTSTART {:?}",
                         self.ctype(),
