@@ -495,7 +495,7 @@ fn expand_observance_rrule(
     for month in months {
         if let Some(by_day) = rrule.by_day() {
             for desc in by_day {
-                if let Some(day) = resolve_month_weekday(year, month, desc) {
+                for day in resolve_month_weekday(year, month, desc) {
                     dates.push(day.and_time(dtstart.time()));
                 }
             }
@@ -518,26 +518,80 @@ fn expand_observance_rrule(
     dates
 }
 
-fn resolve_month_weekday(year: i32, month: u32, desc: &CalWDayDesc) -> Option<NaiveDate> {
+fn resolve_month_weekday(year: i32, month: u32, desc: &CalWDayDesc) -> Vec<NaiveDate> {
     match desc.nth() {
         Some((nth, CalRRuleSide::Start)) => {
             NaiveDate::from_weekday_of_month_opt(year, month, desc.day(), nth)
+                .into_iter()
+                .collect()
         }
         Some((nth, CalRRuleSide::End)) => {
             let (n_year, n_month) = util::next_month(year, month);
-            let next_month = NaiveDate::from_ymd_opt(n_year, n_month, 1)?;
-            let last = next_month.pred_opt()?;
+            let Some(next_month) = NaiveDate::from_ymd_opt(n_year, n_month, 1) else {
+                return vec![];
+            };
+            let Some(last) = next_month.pred_opt() else {
+                return vec![];
+            };
             let last_weekday = last.weekday();
             let first_to_dow =
                 (7 + last_weekday.number_from_monday() - desc.day().number_from_monday()) % 7;
             let day = last.day() - ((nth - 1) as u32 * 7 + first_to_dow);
             NaiveDate::from_ymd_opt(year, month, day)
+                .into_iter()
+                .collect()
         }
         None => {
-            let first = NaiveDate::from_ymd_opt(year, month, 1)?;
+            let Some(first) = NaiveDate::from_ymd_opt(year, month, 1) else {
+                return vec![];
+            };
             let delta =
                 (7 + desc.day().number_from_monday() - first.weekday().number_from_monday()) % 7;
-            NaiveDate::from_ymd_opt(year, month, 1 + delta)
+            let mut day = 1 + delta;
+            let mut dates = Vec::new();
+            let max_day = util::month_days(year, month);
+            while day <= max_day {
+                if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
+                    dates.push(date);
+                }
+                day += 7;
+            }
+            dates
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{NaiveDate, NaiveTime};
+
+    use super::*;
+
+    #[test]
+    fn observance_byday_without_ordinal_expands_all_matching_weekdays() {
+        let dtstart = NaiveDate::from_ymd_opt(2025, 10, 1)
+            .unwrap()
+            .and_time(NaiveTime::from_hms_opt(2, 0, 0).unwrap());
+        let rrule: CalRRule = "FREQ=YEARLY;BYMONTH=10;BYDAY=SU".parse().unwrap();
+
+        let starts = expand_observance_rrule(dtstart, &rrule, 2025);
+
+        assert_eq!(
+            starts,
+            vec![
+                NaiveDate::from_ymd_opt(2025, 10, 5)
+                    .unwrap()
+                    .and_time(dtstart.time()),
+                NaiveDate::from_ymd_opt(2025, 10, 12)
+                    .unwrap()
+                    .and_time(dtstart.time()),
+                NaiveDate::from_ymd_opt(2025, 10, 19)
+                    .unwrap()
+                    .and_time(dtstart.time()),
+                NaiveDate::from_ymd_opt(2025, 10, 26)
+                    .unwrap()
+                    .and_time(dtstart.time()),
+            ]
+        );
     }
 }
