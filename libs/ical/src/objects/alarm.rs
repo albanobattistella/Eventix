@@ -10,6 +10,7 @@ use serde::ser::{Serialize, Serializer};
 use chrono::{Duration, FixedOffset, TimeZone};
 
 use formatx::formatx;
+use tracing::warn;
 
 use crate::objects::locale::CalLocale;
 use crate::objects::{
@@ -229,6 +230,18 @@ impl CalAlarm {
             locale,
         }
     }
+
+    fn check_serializable(&self) {
+        if let CalTrigger::Absolute(date) = &self.trigger
+            && !matches!(date, CalDate::DateTime(CalDateTime::Utc(_)))
+        {
+            warn!("absolute TRIGGER must be a UTC DATE-TIME");
+        }
+
+        if self.duration.is_some() != self.repeat.is_some() {
+            warn!("DURATION and REPEAT must either both be present or both be absent");
+        }
+    }
 }
 
 /// Implements [`Display`](fmt::Display) to create a human-readable representation of a
@@ -313,6 +326,8 @@ impl<'de> Deserialize<'de> for CalAlarm {
 
 impl PropertyProducer for CalAlarm {
     fn to_props(&self) -> Vec<Property> {
+        self.check_serializable();
+
         let mut props = Vec::new();
         props.push(Property::new("BEGIN", vec![], "VALARM"));
         props.push(Property::new("ACTION", vec![], format!("{}", self.action)));
@@ -684,5 +699,40 @@ END:VALARM
         let result: Result<CalAlarm, _> =
             CalAlarm::from_lines(&mut lines, Property::new("", vec![], ""));
         assert!(matches!(result, Err(ParseError::UnexpectedEOF)));
+    }
+
+    #[test]
+    fn alarm_from_lines_preserves_non_utc_absolute_trigger() {
+        let lines_str = "BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER;TZID=Europe/Berlin:20250101T090000
+END:VALARM
+";
+        let mut lines = LineReader::new(lines_str.as_bytes());
+        lines.next().unwrap();
+        let alarm: CalAlarm =
+            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+
+        assert!(matches!(
+            alarm.trigger(),
+            CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Timezone(_, _)))
+        ));
+    }
+
+    #[test]
+    fn alarm_from_lines_preserves_unpaired_duration_or_repeat() {
+        let lines_str = "BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER:-PT15M
+DURATION:PT5M
+END:VALARM
+";
+        let mut lines = LineReader::new(lines_str.as_bytes());
+        lines.next().unwrap();
+        let alarm: CalAlarm =
+            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+
+        assert_eq!(alarm.duration(), Some(Duration::minutes(5).into()));
+        assert_eq!(alarm.repeat, None);
     }
 }
