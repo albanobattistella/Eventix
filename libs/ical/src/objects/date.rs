@@ -438,9 +438,29 @@ impl CalDate {
 
     /// Returns a `CalDate` instance in Utc
     pub fn to_utc(&self) -> Self {
-        Self::DateTime(CalDateTime::Utc(
-            self.as_naive_date().and_hms_opt(0, 0, 0).unwrap().and_utc(),
-        ))
+        match self {
+            Self::Date(day, _) => Self::DateTime(CalDateTime::Utc(
+                day.and_hms_opt(0, 0, 0).unwrap().and_utc(),
+            )),
+            Self::DateTime(CalDateTime::Utc(dt)) => Self::DateTime(CalDateTime::Utc(*dt)),
+            Self::DateTime(CalDateTime::Floating(dt)) => {
+                Self::DateTime(CalDateTime::Utc(dt.and_utc()))
+            }
+            Self::DateTime(CalDateTime::Timezone(local, tzid)) => {
+                let utc = if let Ok(tz) = tzid.parse::<Tz>() {
+                    match tz.from_local_datetime(local) {
+                        MappedLocalTime::Single(dt) => dt.with_timezone(&Utc),
+                        MappedLocalTime::Ambiguous(early, _) => early.with_timezone(&Utc),
+                        MappedLocalTime::None => {
+                            panic!("non-existent local time {local} in {tzid}")
+                        }
+                    }
+                } else {
+                    local.and_utc()
+                };
+                Self::DateTime(CalDateTime::Utc(utc))
+            }
+        }
     }
 
     /// Builds and returns a [`Property`] for this date.
@@ -936,6 +956,26 @@ mod tests {
             berlin_ctx.date_to_utc(&plain_date, &Tz::Europe__Berlin),
             plain_date
         );
+
+        assert_eq!(from_datetime.to_utc().to_string(), "TU2024-01-02T02:04:05");
+        assert_eq!(
+            CalDate::DateTime(CalDateTime::Utc(berlin.with_timezone(&Utc))).to_utc(),
+            CalDate::DateTime(CalDateTime::Utc(berlin.with_timezone(&Utc)))
+        );
+
+        let floating = CalDate::DateTime(CalDateTime::Floating(
+            NaiveDate::from_ymd_opt(2024, 1, 2)
+                .unwrap()
+                .and_hms_opt(3, 4, 5)
+                .unwrap(),
+        ));
+        assert_eq!(floating.to_utc().to_string(), "TU2024-01-02T03:04:05");
+
+        let plain_midnight = CalDate::Date(
+            NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(),
+            CalDateType::Exclusive,
+        );
+        assert_eq!(plain_midnight.to_utc().to_string(), "TU2024-01-02T00:00:00");
     }
 
     #[test]
