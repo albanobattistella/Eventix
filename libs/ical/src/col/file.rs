@@ -689,8 +689,7 @@ impl CalFile {
             }
         }
 
-        comp.set_last_modified(CalDate::now());
-        comp.set_stamp(CalDate::now());
+        comp.touch();
 
         func(base, &mut comp)?;
 
@@ -714,7 +713,9 @@ impl CalFile {
     ///
     /// Returns `Err(ColError::ComponentNotFound)` if no base component with `uid` exists.
     ///
-    /// Note that this does not save to file. Please call [`Self::save`] to do so.
+    /// Note that this does not save to file. Please call [`Self::save`] to do so. Note also that
+    /// this method does *not* touch the base component (update DTSTAMP, etc.), but expects the
+    /// caller to do so. However, updated overwrites are touched.
     pub fn change_start(
         &mut self,
         uid: &str,
@@ -812,8 +813,7 @@ impl CalFile {
                 }
                 _ => {}
             }
-            comp.set_last_modified(now.clone());
-            comp.set_stamp(now.clone());
+            comp.touch_with(now.clone());
         }
 
         // Update the base component.
@@ -836,9 +836,6 @@ impl CalFile {
             }
             _ => {}
         }
-        base.set_last_modified(now.clone());
-        base.set_stamp(now);
-
         Ok(())
     }
 
@@ -2102,6 +2099,7 @@ mod tests {
             .component_with(|c| c.uid() == "ev-ow" && c.rid() == Some(&rid))
             .unwrap();
         assert_eq!(overwrite.summary(), Some(&"Custom Summary".to_string()));
+        assert_eq!(overwrite.sequence(), Some(1));
     }
 
     #[test]

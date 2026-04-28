@@ -368,6 +368,19 @@ impl VDirSyncer {
         Ok(cfg_path)
     }
 
+    fn command_failed(&self, args: &[&str], status: ExitStatus) -> anyhow::Error {
+        let command = std::iter::once("vdirsyncer")
+            .chain(args.iter().copied())
+            .collect::<Vec<_>>()
+            .join(" ");
+        anyhow!(
+            "collection '{}': command `{}` exited with {}",
+            &self.name,
+            command,
+            status
+        )
+    }
+
     async fn run_discover(&self) -> anyhow::Result<()> {
         let args = [
             "--config",
@@ -388,7 +401,7 @@ impl VDirSyncer {
         if status.success() {
             Ok(())
         } else {
-            Err(anyhow!("discover failed: error code {:?}", status.code()))
+            Err(self.command_failed(&args, status))
         }
     }
 
@@ -419,7 +432,7 @@ impl VDirSyncer {
                     if status.success() {
                         return Ok(SyncColResult::Success(res));
                     } else {
-                        return Err(anyhow!("exited with {}", status));
+                        return Err(self.command_failed(&args, status));
                     }
                 }
             }
@@ -440,7 +453,7 @@ impl VDirSyncer {
         if output.status.success() {
             Ok(())
         } else {
-            Err(anyhow!("exited with {}", output.status))
+            Err(self.command_failed(&args, output.status))
         }
     }
 
@@ -458,7 +471,7 @@ impl VDirSyncer {
         if output.status.success() {
             Ok(())
         } else {
-            Err(anyhow!("exited with {}", output.status))
+            Err(self.command_failed(&args, output.status))
         }
     }
 
@@ -534,7 +547,7 @@ impl Syncer for VDirSyncer {
         }
 
         if !output.status.success() {
-            return Err(anyhow!("exited with {}", output.status));
+            return Err(self.command_failed(&args, output.status));
         }
         Ok(SyncColResult::Success(true))
     }
@@ -913,7 +926,9 @@ mod tests {
         let (syncer, _tmp) = make_syncer_with_runner(runner).await;
         let result = syncer.run_discover().await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("discover failed"));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("collection 'testcol'"));
+        assert!(err.contains("command `vdirsyncer"));
     }
 
     // --- escape_value tests ---
@@ -1159,6 +1174,9 @@ mod tests {
         let (mut syncer, _tmp) = make_syncer_with_runner(runner).await;
         let result = syncer.run_sync(vec![]).await;
         assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("collection 'testcol'"));
+        assert!(err.contains("command `vdirsyncer"));
     }
 
     // --- sync tests ---

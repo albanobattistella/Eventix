@@ -50,12 +50,13 @@ impl AlarmRequest {
     #[allow(clippy::type_complexity)]
     pub fn to_alarms(
         &self,
+        locale: &Arc<dyn Locale + Send + Sync>,
         event_tz: &str,
     ) -> anyhow::Result<(Option<Vec<CalAlarm>>, Option<Option<Vec<CalAlarm>>>)> {
         Ok((
-            self.calendar.to_alarms(event_tz)?,
+            self.calendar.to_alarms(locale, event_tz)?,
             match &self.personal {
-                Some(pers) => Some(pers.to_alarms(event_tz)?),
+                Some(pers) => Some(pers.to_alarms(locale, event_tz)?),
                 None => None,
             },
         ))

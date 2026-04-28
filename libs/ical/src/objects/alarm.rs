@@ -10,6 +10,7 @@ use serde::ser::{Serialize, Serializer};
 use chrono::{Duration, FixedOffset, TimeZone};
 
 use formatx::formatx;
+use tracing::warn;
 
 use crate::objects::locale::CalLocale;
 use crate::objects::{
@@ -172,6 +173,11 @@ impl CalAlarm {
         }
     }
 
+    /// Sets the description shown for this alarm.
+    pub fn set_description(&mut self, description: Option<String>) {
+        self.description = description;
+    }
+
     /// Returns the action of the alarm.
     pub fn action(&self) -> CalAction {
         self.action
@@ -227,6 +233,22 @@ impl CalAlarm {
         AlarmHuman {
             alarm: self,
             locale,
+        }
+    }
+
+    fn check_serializable(&self) {
+        if self.action == CalAction::Display && self.description.is_none() {
+            warn!("DISPLAY alarms should include DESCRIPTION");
+        }
+
+        if let CalTrigger::Absolute(date) = &self.trigger
+            && !matches!(date, CalDate::DateTime(CalDateTime::Utc(_)))
+        {
+            warn!("absolute TRIGGER must be a UTC DATE-TIME");
+        }
+
+        if self.duration.is_some() != self.repeat.is_some() {
+            warn!("DURATION and REPEAT must either both be present or both be absent");
         }
     }
 }
@@ -313,6 +335,8 @@ impl<'de> Deserialize<'de> for CalAlarm {
 
 impl PropertyProducer for CalAlarm {
     fn to_props(&self) -> Vec<Property> {
+        self.check_serializable();
+
         let mut props = Vec::new();
         props.push(Property::new("BEGIN", vec![], "VALARM"));
         props.push(Property::new("ACTION", vec![], format!("{}", self.action)));
@@ -498,6 +522,16 @@ mod tests {
             }
             _ => panic!("expected CalTrigger::Relative"),
         }
+
+        let prop: Property = "TRIGGER;RELATED=\"end\":PT5M".parse().unwrap();
+        let trigger: CalTrigger = prop.try_into().unwrap();
+        match trigger {
+            CalTrigger::Relative { related, duration } => {
+                assert_eq!(related, CalRelated::End);
+                assert_eq!(duration, Duration::minutes(5).into());
+            }
+            _ => panic!("expected CalTrigger::Relative"),
+        }
     }
 
     #[test]
@@ -577,13 +611,14 @@ END:VALARM\r
 
     #[test]
     fn alarm_human_relative_positive() {
-        let alarm = CalAlarm::new(
+        let mut alarm = CalAlarm::new(
             CalAction::Display,
             CalTrigger::Relative {
                 related: CalRelated::End,
                 duration: Duration::minutes(30).into(),
             },
         );
+        alarm.set_description(Some("Reminder".to_string()));
         let locale = CalLocaleEn;
         let human = alarm.human(&locale);
         assert_eq!(human.to_string(), "30 minutes after end");
@@ -591,12 +626,13 @@ END:VALARM\r
 
     #[test]
     fn alarm_human_absolute() {
-        let alarm = CalAlarm::new(
+        let mut alarm = CalAlarm::new(
             CalAction::Display,
             CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Utc(
                 Utc.with_ymd_and_hms(2024, 12, 25, 10, 0, 0).unwrap(),
             ))),
         );
+        alarm.set_description(Some("Reminder".to_string()));
         let locale = CalLocaleEn;
         let human = alarm.human(&locale);
         assert_eq!(human.to_string(), "On Wednesday, December 25, 2024 10:00");
@@ -604,17 +640,18 @@ END:VALARM\r
 
     #[test]
     fn alarm_display() {
-        let alarm = CalAlarm::new(
+        let mut alarm = CalAlarm::new(
             CalAction::Display,
             CalTrigger::Relative {
                 related: CalRelated::Start,
                 duration: Duration::minutes(-15).into(),
             },
         );
+        alarm.set_description(Some("Reminder".to_string()));
         let s = alarm.to_string();
         assert_eq!(
             s,
-            "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER;RELATED=START:-PT15M\nEND:VALARM\n"
+            "BEGIN:VALARM\nACTION:DISPLAY\nTRIGGER;RELATED=START:-PT15M\nDESCRIPTION:Reminder\nEND:VALARM\n"
         );
     }
 
@@ -674,5 +711,40 @@ END:VALARM
         let result: Result<CalAlarm, _> =
             CalAlarm::from_lines(&mut lines, Property::new("", vec![], ""));
         assert!(matches!(result, Err(ParseError::UnexpectedEOF)));
+    }
+
+    #[test]
+    fn alarm_from_lines_preserves_non_utc_absolute_trigger() {
+        let lines_str = "BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER;TZID=Europe/Berlin:20250101T090000
+END:VALARM
+";
+        let mut lines = LineReader::new(lines_str.as_bytes());
+        lines.next().unwrap();
+        let alarm: CalAlarm =
+            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+
+        assert!(matches!(
+            alarm.trigger(),
+            CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Timezone(_, _)))
+        ));
+    }
+
+    #[test]
+    fn alarm_from_lines_preserves_unpaired_duration_or_repeat() {
+        let lines_str = "BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER:-PT15M
+DURATION:PT5M
+END:VALARM
+";
+        let mut lines = LineReader::new(lines_str.as_bytes());
+        lines.next().unwrap();
+        let alarm: CalAlarm =
+            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+
+        assert_eq!(alarm.duration(), Some(Duration::minutes(5).into()));
+        assert_eq!(alarm.repeat, None);
     }
 }

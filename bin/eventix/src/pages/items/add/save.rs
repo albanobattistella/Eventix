@@ -26,7 +26,8 @@ async fn action_update(
         return Ok(false);
     }
 
-    let rrule = match form.rrule.to_rrule() {
+    let start = form.start_end().as_caldates(locale, req.ctype.into()).0;
+    let rrule = match form.rrule.to_rrule(start.as_ref()) {
         Ok(rrule) => rrule,
         Err(e) => {
             page.add_error(e);

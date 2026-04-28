@@ -54,6 +54,8 @@ pub enum ParseError {
     InvalidPercent(u8),
     #[error("Invalid priority: {0}")]
     InvalidPriority(u8),
+    #[error("Invalid sequence: {0}")]
+    InvalidSequence(i64),
     #[error("Malformed date: {0}")]
     MalformedDate(String),
     #[error("Invalid date: {0}")]

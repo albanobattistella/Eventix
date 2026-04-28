@@ -67,10 +67,15 @@ impl Property {
 
     /// Returns true if this property has a parameter with given name and value.
     pub fn has_param_value(&self, name: &str, value: &str) -> bool {
-        matches!(
-            self.params.iter().find(|p| p.name() == name),
-            Some(param) if param.value() == value
-        )
+        self.params
+            .iter()
+            .find(|p| p.name() == name)
+            .is_some_and(|param| {
+                param
+                    .values()
+                    .iter()
+                    .any(|param_value| param_value.eq_ignore_ascii_case(value))
+            })
     }
 
     /// Returns a slice of all parameters.
@@ -101,7 +106,7 @@ impl fmt::Display for Property {
             write!(f, "{}", self.value)
         } else {
             for c in util::escape_text(&self.value).chars() {
-                if c.is_control() && c != '\n' {
+                if c.is_control() && c != '\n' && c != '\t' {
                     continue;
                 }
                 f.write_char(c)?;
@@ -160,21 +165,47 @@ impl FromStr for Property {
             (vec![], end)
         };
 
-        let value = s[val_start..].to_string();
-        let value = if name == "RRULE" || name == "CATEGORIES" {
-            value
+        let raw_value = s[val_start..].to_string();
+        let escaped = (!uses_text_escaping(&name) && needs_raw_value_preservation(&raw_value))
+            || has_unknown_text_escape(&raw_value);
+        let value = if escaped {
+            raw_value
         } else {
-            util::unescape_text(&value)
+            util::unescape_text(&raw_value)
         };
 
         Ok(Self {
-            // these are special cases, which do not use escaping
-            escaped: name == "RRULE" || name == "CATEGORIES",
+            // Non-TEXT values are preserved exactly as parsed so unknown and structured
+            // properties round-trip without applying TEXT escaping rules.
+            escaped,
             name,
             params,
             value,
         })
     }
+}
+
+fn uses_text_escaping(name: &str) -> bool {
+    matches!(name, "SUMMARY" | "DESCRIPTION" | "LOCATION" | "TZNAME")
+}
+
+fn needs_raw_value_preservation(value: &str) -> bool {
+    value.contains(['\\', ';', ',', '\n'])
+}
+
+fn has_unknown_text_escape(value: &str) -> bool {
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            continue;
+        }
+
+        match chars.next() {
+            Some('n' | 'N' | '\\' | ';' | ',') | None => {}
+            Some(_) => return true,
+        }
+    }
+    false
 }
 
 /// A consumer of [`Property`].
@@ -209,15 +240,21 @@ pub trait PropertyProducer {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Parameter {
     name: String,
-    value: String,
+    values: Vec<String>,
 }
 
 impl Parameter {
     /// Creates a new parameter with given name and value
     pub fn new<N: ToString, V: ToString>(name: N, value: V) -> Self {
+        Self::new_values(name, vec![value])
+    }
+
+    /// Creates a new parameter with given name and values.
+    pub fn new_values<N: ToString, V: ToString>(name: N, values: Vec<V>) -> Self {
+        assert!(!values.is_empty());
         Self {
             name: name.to_string(),
-            value: value.to_string(),
+            values: values.into_iter().map(|value| value.to_string()).collect(),
         }
     }
 
@@ -228,17 +265,28 @@ impl Parameter {
 
     /// Returns a reference to the value
     pub fn value(&self) -> &String {
-        &self.value
+        &self.values[0]
+    }
+
+    /// Returns a slice of all values.
+    pub fn values(&self) -> &[String] {
+        &self.values
     }
 }
 
 impl fmt::Display for Parameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}=", self.name)?;
-        if self.value.contains([':', ';', ',']) {
-            write!(f, "\"{}\"", self.value)?;
-        } else {
-            write!(f, "{}", self.value)?;
+        for (idx, value) in self.values.iter().enumerate() {
+            if idx > 0 {
+                f.write_char(',')?;
+            }
+
+            if value.contains([':', ';', ',']) {
+                write!(f, "\"{}\"", value)?;
+            } else {
+                write!(f, "{}", value)?;
+            }
         }
         Ok(())
     }
@@ -254,16 +302,43 @@ impl FromStr for Parameter {
         let was_quoted = value.starts_with('"');
 
         // strip quotes
-        let mut value = if was_quoted {
-            value[1..value.len() - 1].to_string()
+        let values = if was_quoted {
+            parse_parameter_values(&value[1..value.len() - 1], true, &name)
         } else {
-            value.to_string()
+            parse_parameter_values(value, false, &name)
         };
 
-        if !was_quoted && should_uppercase_param_value(&name) {
-            value = value.to_ascii_uppercase();
+        Ok(Self { name, values })
+    }
+}
+
+fn parse_parameter_values(value: &str, was_quoted: bool, name: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = was_quoted;
+
+    for c in value.chars() {
+        match c {
+            '"' => {
+                in_quote = !in_quote;
+            }
+            ',' if !in_quote => {
+                values.push(normalize_parameter_value(current.clone(), was_quoted, name));
+                current.clear();
+            }
+            _ => current.push(c),
         }
-        Ok(Self { name, value })
+    }
+
+    values.push(normalize_parameter_value(current, was_quoted, name));
+    values
+}
+
+fn normalize_parameter_value(value: String, was_quoted: bool, name: &str) -> String {
+    if !was_quoted && should_uppercase_param_value(name) {
+        value.to_ascii_uppercase()
+    } else {
+        value
     }
 }
 
@@ -324,6 +399,22 @@ mod tests {
     }
 
     #[test]
+    fn param_with_multiple_values() {
+        let prop_str = "ATTENDEE;MEMBER=\"mailto:a\",\"mailto:b\":mailto:c";
+        let prop = prop_str.parse::<Property>().unwrap();
+        assert_eq!(prop.name(), "ATTENDEE");
+        assert_eq!(
+            prop.params(),
+            [Parameter::new_values(
+                "MEMBER",
+                vec!["mailto:a", "mailto:b"]
+            )]
+        );
+        assert_eq!(prop.value(), "mailto:c");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
     fn value_with_quotes() {
         let prop_str = "TEST;FOO=bar;A=B:\"value\"";
         let prop = prop_str.parse::<Property>().unwrap();
@@ -369,6 +460,22 @@ mod tests {
     }
 
     #[test]
+    fn unknown_text_escape_is_preserved_losslessly() {
+        let prop_str = "SUMMARY:foo\\qbar";
+        let prop = prop_str.parse::<Property>().unwrap();
+        assert_eq!(prop.value(), r"foo\qbar");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn tabs_are_preserved_in_text_properties() {
+        let prop_str = "SUMMARY:foo\tbar";
+        let prop = prop_str.parse::<Property>().unwrap();
+        assert_eq!(prop.value(), "foo\tbar");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
     fn backslash_roundtrip() {
         let prop_str = "SUMMARY:contains\\\\backslash";
         let prop = prop_str.parse::<Property>().unwrap();
@@ -381,6 +488,24 @@ mod tests {
         let prop_str = "RRULE:FREQ=DAILY;X-TEST=FOO\\N";
         let prop = prop_str.parse::<Property>().unwrap();
         assert_eq!(prop.value(), "FREQ=DAILY;X-TEST=FOO\\N");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn generic_x_property_value_is_preserved_verbatim() {
+        let prop_str = "X-CUSTOM:Value\\Nwith\\;literal\\,separators";
+        let prop = prop_str.parse::<Property>().unwrap();
+
+        assert_eq!(prop.value(), "Value\\Nwith\\;literal\\,separators");
+        assert_eq!(format!("{}", prop), prop_str);
+    }
+
+    #[test]
+    fn request_status_value_is_preserved_verbatim() {
+        let prop_str = "REQUEST-STATUS:2.0;Success;details\\Nkept";
+        let prop = prop_str.parse::<Property>().unwrap();
+
+        assert_eq!(prop.value(), "2.0;Success;details\\Nkept");
         assert_eq!(format!("{}", prop), prop_str);
     }
 
@@ -416,5 +541,38 @@ mod tests {
             prop.params(),
             [Parameter::new("RELATED".to_string(), "END".to_string())]
         );
+    }
+
+    #[test]
+    fn quoted_enum_param_values_match_case_insensitively() {
+        let date = "DTSTART;VALUE=\"date\":20250101"
+            .parse::<Property>()
+            .unwrap();
+        assert!(date.has_param_value("VALUE", "DATE"));
+
+        let trigger = "TRIGGER;RELATED=\"end\":PT5M".parse::<Property>().unwrap();
+        assert!(trigger.has_param_value("RELATED", "END"));
+    }
+
+    #[test]
+    fn multi_value_parameter_matches_each_member() {
+        let prop = "ATTENDEE;MEMBER=\"mailto:a\",\"mailto:b\":mailto:c"
+            .parse::<Property>()
+            .unwrap();
+
+        assert!(prop.has_param_value("MEMBER", "mailto:a"));
+        assert!(prop.has_param_value("MEMBER", "mailto:b"));
+    }
+
+    #[test]
+    fn quoted_single_parameter_value_can_contain_commas() {
+        let prop_str = "ATTENDEE;CN=\"My,Name\":mailto:test@example.com";
+        let prop = prop_str.parse::<Property>().unwrap();
+
+        assert_eq!(
+            prop.params(),
+            [Parameter::new("CN".to_string(), "My,Name".to_string())]
+        );
+        assert_eq!(format!("{}", prop), prop_str);
     }
 }

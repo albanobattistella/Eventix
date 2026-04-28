@@ -350,6 +350,16 @@ impl CalDate {
         Self::Date(date, ty)
     }
 
+    /// Returns a new [`CalDate::DateTime`] instance for the given date/time in given timezone.
+    ///
+    /// If the time is `None`, 0:00:00 will be used.
+    pub fn new_datetime<T: ToString>(date: NaiveDate, time: Option<NaiveTime>, tz: T) -> Self {
+        Self::DateTime(CalDateTime::Timezone(
+            date.and_time(time.unwrap_or(NaiveTime::from_hms_opt(0, 0, 0).unwrap())),
+            tz.to_string(),
+        ))
+    }
+
     /// Returns a new [`CalDate::DateTime`] instance for the current time in UTC.
     pub fn now() -> Self {
         CalDate::DateTime(CalDateTime::Utc(Utc::now()))
@@ -374,6 +384,29 @@ impl CalDate {
         )
     }
 
+    /// Returns true if `self` and `other` use the same DATE-TIME representation.
+    ///
+    /// This distinguishes floating, UTC, and TZID-based values. Plain `DATE` values are treated
+    /// as matching only other `DATE` values.
+    pub fn is_same_value_type(&self, other: &CalDate) -> bool {
+        matches!(
+            (self, other),
+            (CalDate::Date(..), CalDate::Date(..))
+                | (
+                    CalDate::DateTime(CalDateTime::Floating(_)),
+                    CalDate::DateTime(CalDateTime::Floating(_))
+                )
+                | (
+                    CalDate::DateTime(CalDateTime::Utc(_)),
+                    CalDate::DateTime(CalDateTime::Utc(_))
+                )
+                | (
+                    CalDate::DateTime(CalDateTime::Timezone(_, _)),
+                    CalDate::DateTime(CalDateTime::Timezone(_, _))
+                )
+        )
+    }
+
     /// Returns this date normalized to the representation shape of `target`.
     ///
     /// The returned value keeps the calendar day from `self` but uses the variant and date type or
@@ -381,9 +414,7 @@ impl CalDate {
     pub fn normalize_to(&self, target: &CalDate) -> Self {
         match target {
             Self::Date(_, ty) => Self::Date(self.as_naive_date(), *ty),
-            Self::DateTime(CalDateTime::Utc(_)) => Self::DateTime(CalDateTime::Utc(
-                self.as_naive_date().and_hms_opt(0, 0, 0).unwrap().and_utc(),
-            )),
+            Self::DateTime(CalDateTime::Utc(_)) => self.to_utc(),
             Self::DateTime(CalDateTime::Timezone(_, tzid)) => {
                 let naive = match self {
                     Self::DateTime(CalDateTime::Timezone(dt, _)) => *dt,
@@ -401,6 +432,33 @@ impl CalDate {
                     Self::Date(day, _) => day.and_hms_opt(0, 0, 0).unwrap(),
                 };
                 Self::DateTime(CalDateTime::Floating(naive))
+            }
+        }
+    }
+
+    /// Returns a `CalDate` instance in Utc
+    pub fn to_utc(&self) -> Self {
+        match self {
+            Self::Date(day, _) => Self::DateTime(CalDateTime::Utc(
+                day.and_hms_opt(0, 0, 0).unwrap().and_utc(),
+            )),
+            Self::DateTime(CalDateTime::Utc(dt)) => Self::DateTime(CalDateTime::Utc(*dt)),
+            Self::DateTime(CalDateTime::Floating(dt)) => {
+                Self::DateTime(CalDateTime::Utc(dt.and_utc()))
+            }
+            Self::DateTime(CalDateTime::Timezone(local, tzid)) => {
+                let utc = if let Ok(tz) = tzid.parse::<Tz>() {
+                    match tz.from_local_datetime(local) {
+                        MappedLocalTime::Single(dt) => dt.with_timezone(&Utc),
+                        MappedLocalTime::Ambiguous(early, _) => early.with_timezone(&Utc),
+                        MappedLocalTime::None => {
+                            panic!("non-existent local time {local} in {tzid}")
+                        }
+                    }
+                } else {
+                    local.and_utc()
+                };
+                Self::DateTime(CalDateTime::Utc(utc))
             }
         }
     }
@@ -735,6 +793,19 @@ mod tests {
     }
 
     #[test]
+    fn date_with_quoted_lowercase_value_param() {
+        let prop = "DUE;VALUE=\"date\":20041030".parse::<Property>().unwrap();
+        let date: CalDate = prop.try_into().unwrap();
+        assert_eq!(
+            date,
+            CalDate::Date(
+                NaiveDate::from_ymd_opt(2004, 10, 30).unwrap(),
+                CalDateType::Inclusive
+            )
+        );
+    }
+
+    #[test]
     fn datetime_tz() {
         let prop = "DTSTART;TZID=Europe/Berlin:20040102T081000"
             .parse::<Property>()
@@ -885,6 +956,26 @@ mod tests {
             berlin_ctx.date_to_utc(&plain_date, &Tz::Europe__Berlin),
             plain_date
         );
+
+        assert_eq!(from_datetime.to_utc().to_string(), "TU2024-01-02T02:04:05");
+        assert_eq!(
+            CalDate::DateTime(CalDateTime::Utc(berlin.with_timezone(&Utc))).to_utc(),
+            CalDate::DateTime(CalDateTime::Utc(berlin.with_timezone(&Utc)))
+        );
+
+        let floating = CalDate::DateTime(CalDateTime::Floating(
+            NaiveDate::from_ymd_opt(2024, 1, 2)
+                .unwrap()
+                .and_hms_opt(3, 4, 5)
+                .unwrap(),
+        ));
+        assert_eq!(floating.to_utc().to_string(), "TU2024-01-02T03:04:05");
+
+        let plain_midnight = CalDate::Date(
+            NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(),
+            CalDateType::Exclusive,
+        );
+        assert_eq!(plain_midnight.to_utc().to_string(), "TU2024-01-02T00:00:00");
     }
 
     #[test]

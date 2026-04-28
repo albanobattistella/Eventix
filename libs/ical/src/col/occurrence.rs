@@ -490,6 +490,10 @@ impl EventLike for Occurrence<'_> {
         occ_or_base_opt!(self, last_modified)
     }
 
+    fn sequence(&self) -> Option<u32> {
+        occ_or_base_opt!(self, sequence)
+    }
+
     fn start(&self) -> Option<&CalDate> {
         occ_or_base_opt!(self, start)
     }

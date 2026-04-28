@@ -107,12 +107,7 @@ pub trait CompAction {
             return false;
         }
 
-        if self
-            .rrule()
-            .and_then(|rr| rr.to_rrule().unwrap_or(None))
-            .is_some()
-            && start.is_none()
-        {
+        if self.rrule().map(|rr| rr.has_rrule()).unwrap_or(false) && start.is_none() {
             page.add_error(locale.translate("error.repeating_event_start"));
             return false;
         }
@@ -154,7 +149,7 @@ pub trait CompAction {
             comp.set_due_checked(end, ctx, local_tz)?;
         }
 
-        let (cal_alarms, pers_alarms) = self.alarm().to_alarms(&event_tz).unwrap();
+        let (cal_alarms, pers_alarms) = self.alarm().to_alarms(locale, &event_tz).unwrap();
         if let Some(cal_alarms) = cal_alarms {
             comp.set_alarms(Some(cal_alarms));
         } else {
@@ -190,7 +185,7 @@ pub trait CompAction {
                 if st.status() == CalTodoStatus::Completed {
                     td.set_percent(Some(100));
                     let completed = st.completed().and_then(|d| d.to_caldate(dtype, false));
-                    comp.set_completed_checked(completed, ctx, local_tz)?;
+                    td.set_completed(completed.map(|d| d.to_utc()));
                 } else if st.status() == CalTodoStatus::InProcess {
                     td.set_percent(st.percent());
                 } else {
@@ -204,8 +199,7 @@ pub trait CompAction {
             comp.set_priority(Some(PRIORITY_MEDIUM));
         }
 
-        comp.set_last_modified(CalDate::now());
-        comp.set_stamp(CalDate::now());
+        comp.touch();
         Ok(())
     }
 }

@@ -8,8 +8,7 @@ use axum::response::IntoResponse;
 use chrono_tz::Tz;
 use eventix_ical::col::CalFile;
 use eventix_ical::objects::{
-    CalCompType, CalComponent, CalDate, CalDateType, CalEvent, CalTodo, Calendar, EventLike,
-    UpdatableEventLike,
+    CalCompType, CalComponent, CalDate, CalEvent, CalTodo, Calendar, EventLike, UpdatableEventLike,
 };
 use eventix_locale::Locale;
 use eventix_state::EventixState;
@@ -67,7 +66,7 @@ fn action_update(
     };
 
     let base = file
-        .component_with_mut(|c| c.uid() == &req.uid && c.rid().is_none())
+        .component_with(|c| c.uid() == &req.uid && c.rid().is_none())
         .context("Unable to find base component")?;
     let ctype = base.ctype();
 
@@ -78,6 +77,8 @@ fn action_update(
     if !form.check(page, locale, ctype) {
         return Ok((false, None));
     }
+
+    let event_tz = form.start_end.effective_timezone(locale);
 
     let rrule = if req.mode == EditMode::Occurrence {
         // inherit from base if we can
@@ -92,7 +93,11 @@ fn action_update(
         }
         None
     } else {
-        match form.rrule.as_ref().map(|rr| rr.to_rrule()) {
+        let res = form.rrule.as_ref().map(|rr| {
+            let start = form.start_end().as_caldates(locale, ctype.into()).0;
+            rr.to_rrule(start.as_ref())
+        });
+        match res {
             None => None,
             Some(Ok(rrule)) => rrule,
             Some(Err(e)) => {
@@ -110,18 +115,27 @@ fn action_update(
         calendar
     };
 
-    let event_tz = form.start_end.effective_timezone(locale);
-
     let new_uid = if req.mode == EditMode::Following {
         let rid = rid.unwrap();
 
         // end the series before this occurrence
-        let mut old_rrule = base.rrule().unwrap().clone();
-        let old_start = base.start().unwrap().clone();
-        let prev_day = rid.as_naive_date().pred_opt().unwrap();
-        let until = CalDate::new_date(prev_day, CalDateType::Inclusive);
-        old_rrule.set_until(until);
-        base.set_rrule(Some(old_rrule));
+        let old_start = {
+            let base = file
+                .component_with_mut(|c| c.uid() == &req.uid && c.rid().is_none())
+                .context("Unable to find base component")?;
+            let mut old_rrule = base.rrule().unwrap().clone();
+            let old_start = base.start().unwrap().clone();
+            let until = match &old_start {
+                CalDate::Date(_, _) => {
+                    CalDate::Date(rid.as_naive_date().pred_opt().unwrap(), ctype.into())
+                }
+                CalDate::DateTime(_) => rid.to_utc(),
+            };
+            old_rrule.set_until(until);
+            base.set_rrule(Some(old_rrule));
+            base.touch();
+            old_start
+        };
 
         // delete all future overwrites
         file.calendar_mut().delete_components(|c| {
@@ -207,7 +221,11 @@ fn action_update(
                 let tz: Tz = event_tz
                     .parse()
                     .map_err(|_| anyhow!("Invalid timezone: {}", event_tz))?;
-                if let Some(new_start) = new_start {
+                let should_shift_series =
+                    new_start.as_ref() != comp.start() || new_end.as_ref() != comp.end_or_due();
+                if let Some(new_start) = new_start
+                    && should_shift_series
+                {
                     file.change_start(&req.uid, new_start, new_end, &tz)
                         .context("Shifting overwrite RIDs failed")?;
                 }

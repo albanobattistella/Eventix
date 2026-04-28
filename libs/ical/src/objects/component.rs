@@ -11,8 +11,9 @@ use std::io::BufRead;
 use tracing::warn;
 
 use crate::objects::{
-    CalAlarm, CalAttendee, CalDate, CalDuration, CalEvent, CalOrganizer, CalRRule, CalTodo,
-    CalendarTimeZoneResolver, DateContext, EventLike, ResolvedDateTime, UpdatableEventLike,
+    CalAlarm, CalAttendee, CalDate, CalDateTime, CalDuration, CalEvent, CalOrganizer, CalRRule,
+    CalTodo, CalendarTimeZoneResolver, DateContext, EventLike, ResolvedDateTime,
+    UpdatableEventLike,
 };
 use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
 use crate::util;
@@ -35,6 +36,7 @@ pub struct EventLikeComponent {
     stamp: CalDate,
     created: Option<CalDate>,
     last_mod: Option<CalDate>,
+    sequence: Option<u32>,
     start: Option<CalDate>,
     duration: Option<CalDuration>,
     summary: Option<String>,
@@ -60,6 +62,7 @@ impl EventLikeComponent {
             stamp: CalDate::default(),
             created: None,
             last_mod: None,
+            sequence: None,
             start: None,
             duration: None,
             summary: None,
@@ -95,6 +98,13 @@ impl EventLikeComponent {
         self.start = start;
     }
 
+    pub(crate) fn assert_utc_only(name: &str, date: &CalDate) {
+        assert!(
+            matches!(date, CalDate::DateTime(crate::objects::CalDateTime::Utc(_))),
+            "{name} must be a UTC DATE-TIME"
+        );
+    }
+
     pub(crate) fn parse_prop<R: BufRead>(
         &mut self,
         lines: &mut LineReader<R>,
@@ -113,6 +123,13 @@ impl EventLikeComponent {
             "DTSTAMP" => {
                 self.stamp = prop.try_into()?;
             }
+            "SEQUENCE" => {
+                let sequence = prop.value().parse::<i64>()?;
+                if sequence < 0 || sequence > u32::MAX as i64 {
+                    return Err(ParseError::InvalidSequence(sequence));
+                }
+                self.sequence = Some(sequence as u32);
+            }
             "DTSTART" => {
                 self.start = Some(prop.try_into()?);
             }
@@ -129,12 +146,7 @@ impl EventLikeComponent {
                 self.location = Some(prop.take_value());
             }
             "CATEGORIES" => {
-                self.categories = Some(
-                    util::split_escaped_commas(prop.value())
-                        .into_iter()
-                        .map(|v| v.trim().to_string())
-                        .collect(),
-                );
+                self.categories = Some(util::split_escaped_commas(prop.value()));
             }
             "ORGANIZER" => {
                 self.organizer = Some(prop.try_into()?);
@@ -219,6 +231,9 @@ impl EventLikeComponent {
     fn collapse_against_base(&mut self, base: &EventLikeComponent) {
         Self::collapse_optional(&mut self.created, base.created.as_ref());
         Self::collapse_optional(&mut self.last_mod, base.last_mod.as_ref());
+        if self.sequence == base.sequence {
+            self.sequence = None;
+        }
         Self::collapse_optional(&mut self.start, base.start.as_ref());
         Self::collapse_optional(&mut self.duration, base.duration.as_ref());
         Self::collapse_optional(&mut self.summary, base.summary.as_ref());
@@ -237,10 +252,66 @@ impl EventLikeComponent {
         }
         self.props.retain(|prop| !base.props.contains(prop));
     }
+
+    fn check_rrule_until_matches_start(&self) {
+        let Some(start) = self.start.as_ref() else {
+            return;
+        };
+        let Some(until) = self.rrule.as_ref().and_then(CalRRule::until) else {
+            return;
+        };
+
+        let valid = match start {
+            CalDate::Date(_, _) => matches!(until, CalDate::Date(_, _)),
+            CalDate::DateTime(CalDateTime::Floating(_)) => {
+                matches!(until, CalDate::DateTime(CalDateTime::Floating(_)))
+            }
+            CalDate::DateTime(CalDateTime::Utc(_)) => {
+                matches!(until, CalDate::DateTime(CalDateTime::Utc(_)))
+            }
+            CalDate::DateTime(CalDateTime::Timezone(_, _)) => {
+                matches!(until, CalDate::DateTime(CalDateTime::Utc(_)))
+            }
+        };
+
+        if !valid {
+            warn!("RRULE UNTIL is incompatible with DTSTART: DTSTART={start:?}, UNTIL={until:?}");
+        }
+    }
+
+    fn check_recurrence_id_matches_start(&self) {
+        if let (Some(start), Some(rid)) = (self.start.as_ref(), self.rid.as_ref())
+            && !start.is_same_value_type(rid)
+        {
+            warn!(
+                "RECURRENCE-ID must use the same value type as DTSTART: DTSTART={start:?}, RECURRENCE-ID={rid:?}"
+            );
+        }
+    }
+
+    fn check_exdate_type_mismatch(&self) {
+        if let Some(dtstart) = self.start() {
+            for exdate in self.exdates() {
+                if !dtstart.is_same_value_type(exdate) {
+                    warn!(
+                        "component {} (uid {}) has EXDATE {:?} with different value type than DTSTART {:?}",
+                        self.ctype(),
+                        self.uid(),
+                        exdate,
+                        dtstart
+                    );
+                }
+            }
+        }
+    }
 }
 
 impl PropertyProducer for EventLikeComponent {
     fn to_props(&self) -> Vec<Property> {
+        self.check_rrule_until_matches_start();
+        self.check_recurrence_id_matches_start();
+        self.check_exdate_type_mismatch();
+
         let mut props = vec![];
         props.push(Property::new("UID", vec![], self.uid.clone()));
         if let Some(ref created) = self.created {
@@ -250,6 +321,9 @@ impl PropertyProducer for EventLikeComponent {
             props.push(last_mod.to_prop("LAST-MODIFIED"));
         }
         props.push(self.stamp.to_prop("DTSTAMP"));
+        if let Some(sequence) = self.sequence {
+            props.push(Property::new("SEQUENCE", vec![], sequence.to_string()));
+        }
         if let Some(ref dtstart) = self.start {
             props.push(dtstart.to_prop("DTSTART"));
         }
@@ -319,6 +393,10 @@ impl EventLike for EventLikeComponent {
 
     fn last_modified(&self) -> Option<&CalDate> {
         self.last_mod.as_ref()
+    }
+
+    fn sequence(&self) -> Option<u32> {
+        self.sequence
     }
 
     fn start(&self) -> Option<&CalDate> {
@@ -400,11 +478,17 @@ impl UpdatableEventLike for EventLikeComponent {
     }
 
     fn set_last_modified(&mut self, date: CalDate) {
+        Self::assert_utc_only("LAST-MODIFIED", &date);
         self.last_mod = Some(date);
     }
 
     fn set_stamp(&mut self, date: CalDate) {
+        Self::assert_utc_only("DTSTAMP", &date);
         self.stamp = date;
+    }
+
+    fn set_sequence(&mut self, sequence: Option<u32>) {
+        self.sequence = sequence;
     }
 
     fn set_rrule(&mut self, rrule: Option<CalRRule>) {
@@ -567,6 +651,7 @@ impl CalComponent {
             stamp: over.stamp.clone(),
             created: over.created.clone().or_else(|| base.created.clone()),
             last_mod: over.last_mod.clone().or_else(|| base.last_mod.clone()),
+            sequence: over.sequence.or(base.sequence),
             start,
             duration: over.duration.or(base.duration),
             summary: over.summary.clone().or_else(|| base.summary.clone()),
@@ -699,11 +784,28 @@ impl CalComponent {
             };
 
             let dtstart = resolver.pseudo_local_date_start(dtstart, &start.timezone());
-            let dates = rrule.dates_between(dtstart, self.time_duration(), start, end);
+            let until_override = match (self.start(), rrule.until()) {
+                (
+                    Some(CalDate::DateTime(CalDateTime::Timezone(_, tzid))),
+                    Some(CalDate::DateTime(CalDateTime::Utc(until_utc))),
+                ) => Some(
+                    until_utc
+                        .with_timezone(&tzid.parse::<Tz>().unwrap_or(Tz::UTC))
+                        .naive_local()
+                        .and_utc(),
+                ),
+                _ => None,
+            };
+
+            let dates = rrule.dates_between_with_until(
+                dtstart,
+                self.time_duration(),
+                start,
+                end,
+                until_override,
+            );
             let tzid = self.start().and_then(|date| match date {
-                CalDate::DateTime(crate::objects::CalDateTime::Timezone(_, tzid)) => {
-                    Some(tzid.clone())
-                }
+                CalDate::DateTime(CalDateTime::Timezone(_, tzid)) => Some(tzid.clone()),
                 _ => None,
             });
             let fallback = start.timezone();
@@ -789,24 +891,6 @@ impl CalComponent {
         self.as_todo_mut().unwrap().set_due(due);
         Ok(())
     }
-
-    /// Sets the completion date of a TODO component, validating it against the user's local
-    /// timezone.
-    ///
-    /// Returns an error when the datetime falls in a DST gap (non-existent time) or DST fold
-    /// (ambiguous time). Panics if the component is not a TODO.
-    pub fn set_completed_checked(
-        &mut self,
-        completed: Option<CalDate>,
-        ctx: &DateContext,
-        local_tz: &Tz,
-    ) -> Result<(), ParseError> {
-        if let Some(ref d) = completed {
-            ctx.validate_date(d, local_tz)?;
-        }
-        self.as_todo_mut().unwrap().set_completed(completed);
-        Ok(())
-    }
 }
 
 impl PropertyProducer for CalComponent {
@@ -858,6 +942,10 @@ impl EventLike for CalComponent {
 
     fn last_modified(&self) -> Option<&CalDate> {
         get_with_ev_or_todo!(self, last_modified)
+    }
+
+    fn sequence(&self) -> Option<u32> {
+        get_with_ev_or_todo!(self, sequence)
     }
 
     fn start(&self) -> Option<&CalDate> {
@@ -949,6 +1037,10 @@ impl UpdatableEventLike for CalComponent {
         set_with_ev_or_todo!(self, set_stamp, date);
     }
 
+    fn set_sequence(&mut self, sequence: Option<u32>) {
+        set_with_ev_or_todo!(self, set_sequence, sequence);
+    }
+
     fn set_rrule(&mut self, rrule: Option<CalRRule>) {
         set_with_ev_or_todo!(self, set_rrule, rrule);
     }
@@ -983,7 +1075,7 @@ mod tests {
     use chrono::TimeZone;
     use chrono_tz::UTC;
 
-    use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, DateContext};
+    use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, DateContext, EventLike};
     use crate::parser::{LineReader, ParseError, Property, PropertyProducer};
 
     use super::{CalCompType, EventLikeComponent};
@@ -1003,6 +1095,7 @@ mod tests {
             "CREATED:20250101T120000Z",
             "LAST-MODIFIED:20250101T121500Z",
             "DTSTAMP:20250101T123000Z",
+            "SEQUENCE:7",
             "DTSTART:20250102T090000Z",
             "DURATION:PT45M",
             "SUMMARY:Quarterly planning",
@@ -1047,12 +1140,13 @@ mod tests {
                 String::from("CREATED:20250101T120000Z"),
                 String::from("LAST-MODIFIED:20250101T121500Z"),
                 String::from("DTSTAMP:20250101T123000Z"),
+                String::from("SEQUENCE:7"),
                 String::from("DTSTART:20250102T090000Z"),
                 String::from("DURATION:PT45M"),
                 String::from("SUMMARY:Quarterly planning"),
                 String::from("DESCRIPTION:Plan work and assign owners"),
                 String::from("LOCATION:Conference Room A"),
-                String::from("CATEGORIES:Engineering\\,Platform,Operations"),
+                String::from("CATEGORIES:Engineering\\,Platform, Operations"),
                 String::from("ORGANIZER;CN=Alex Lead:mailto:alex@example.com"),
                 String::from(
                     "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Alice:mailto:alice@example.com"
@@ -1065,6 +1159,41 @@ mod tests {
                 String::from("X-CUSTOM:kept-as-generic-prop"),
             ]
         );
+    }
+
+    #[test]
+    fn categories_preserve_significant_whitespace() {
+        let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
+        parse_prop_line(&mut comp, "CATEGORIES:Engineering\\,Platform, Operations").unwrap();
+
+        assert_eq!(
+            comp.categories(),
+            Some(
+                vec![
+                    "Engineering,Platform".to_string(),
+                    " Operations".to_string()
+                ]
+                .as_ref()
+            )
+        );
+
+        let categories = comp
+            .to_props()
+            .into_iter()
+            .find(|prop| prop.name() == "CATEGORIES")
+            .unwrap();
+        assert_eq!(
+            categories.to_string(),
+            "CATEGORIES:Engineering\\,Platform, Operations"
+        );
+    }
+
+    #[test]
+    fn parse_prop_rejects_negative_sequence() {
+        let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
+        let err = parse_prop_line(&mut comp, "SEQUENCE:-1").unwrap_err();
+
+        assert_eq!(err, ParseError::InvalidSequence(-1));
     }
 
     #[test]
@@ -1223,19 +1352,6 @@ mod tests {
                 .is_err()
         );
         assert!(td.as_todo().unwrap().due().is_none());
-
-        // set_completed_checked: both gap and fold must be rejected, leaving completed None.
-        let mut td = CalComponent::Todo(CalTodo::new("td-2"));
-        assert!(
-            td.set_completed_checked(Some(gap.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(td.as_todo().unwrap().completed().is_none());
-        assert!(
-            td.set_completed_checked(Some(fold.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(td.as_todo().unwrap().completed().is_none());
     }
 
     #[test]
@@ -1243,7 +1359,7 @@ mod tests {
         use chrono::NaiveDate;
         use chrono_tz::Tz;
 
-        use crate::objects::{CalDate, CalDateTime, CalTodo, EventLike};
+        use crate::objects::{CalDate, CalDateTime, EventLike};
 
         // 10:00 AM on 2025-03-30 is a valid time in Europe/Berlin.
         let valid = CalDate::DateTime(CalDateTime::Floating(
@@ -1267,12 +1383,5 @@ mod tests {
                 .is_ok()
         );
         assert!(ev.set_end_checked(None, &ctx, &Tz::Europe__Berlin).is_ok());
-
-        let mut td = CalComponent::Todo(CalTodo::new("td-n"));
-        assert!(td.set_due_checked(None, &ctx, &Tz::Europe__Berlin).is_ok());
-        assert!(
-            td.set_completed_checked(None, &ctx, &Tz::Europe__Berlin)
-                .is_ok()
-        );
     }
 }

@@ -7,7 +7,8 @@ use askama::Template;
 use chrono::Weekday;
 use chrono_tz::Tz;
 use eventix_ical::objects::{
-    CalDateType, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc, DateContext, DayDesc,
+    CalDate, CalDateTime, CalDateType, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc,
+    DateContext, DayDesc,
 };
 use eventix_ical::parser::ParseError;
 use eventix_locale::Locale;
@@ -478,8 +479,16 @@ impl RecurRequest {
         }
     }
 
-    pub fn to_rrule(&self) -> anyhow::Result<Option<CalRRule>> {
+    pub fn has_rrule(&self) -> bool {
+        self.freq.is_some()
+    }
+
+    pub fn to_rrule(&self, start: Option<&CalDate>) -> anyhow::Result<Option<CalRRule>> {
         if let Some(freq) = self.freq {
+            let Some(start) = start else {
+                return Ok(None);
+            };
+
             let mut rrule = CalRRule::default();
             rrule.set_frequency(freq.into());
             rrule.set_interval(self.interval);
@@ -556,11 +565,17 @@ impl RecurRequest {
                 RecurEnd::Count => rrule.set_count(self.count),
                 RecurEnd::Until => {
                     if let Some(ref until) = self.until {
-                        rrule.set_until(
-                            until
-                                .to_caldate(CalDateType::Inclusive, false)
-                                .ok_or_else(|| anyhow!("Please specify a valid end date"))?,
-                        );
+                        let date = until
+                            .to_caldate(CalDateType::Inclusive, false)
+                            .ok_or_else(|| anyhow!("Please specify a valid end date"))?;
+                        let until_date = match start {
+                            CalDate::Date(_, _) | CalDate::DateTime(CalDateTime::Floating(_)) => {
+                                date.normalize_to(start)
+                            }
+                            // RFC 5545 demands UTC for CalDateTime::Timezone and CalDateTime::Utc
+                            _ => date.to_utc(),
+                        };
+                        rrule.set_until(until_date);
                     } else {
                         return Err(anyhow!("Please specify the end date"));
                     }

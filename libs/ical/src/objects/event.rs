@@ -127,8 +127,14 @@ impl PropertyConsumer for CalEvent {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{NaiveDate, NaiveTime, TimeZone, Utc};
+    use chrono_tz::Tz;
+
     use super::*;
-    use crate::objects::EventLike;
+    use crate::objects::{
+        CalComponent, CalDate, CalDateTime, CalRRule, CalendarTimeZoneResolver, EventLike,
+        ResolvedDateTime, UpdatableEventLike,
+    };
     use crate::parser::{LineReader, Property};
 
     #[test]
@@ -191,5 +197,68 @@ END:VEVENT\n";
         assert!(ev.end().is_some());
         ev.set_end(None);
         assert!(ev.end().is_none());
+    }
+
+    #[test]
+    fn tzid_start_with_utc_until_stops_on_correct_occurrence() {
+        let mut ev = CalEvent::new("good-until");
+        ev.set_start(Some(CalDate::new_datetime(
+            NaiveDate::from_ymd_opt(2025, 3, 28).unwrap(),
+            NaiveTime::from_hms_opt(9, 0, 0),
+            "Europe/Berlin",
+        )));
+
+        let mut rrule = CalRRule::default();
+        rrule.set_frequency(crate::objects::CalRRuleFreq::Daily);
+        rrule.set_until(CalDate::DateTime(CalDateTime::Utc(
+            Utc.with_ymd_and_hms(2025, 3, 31, 7, 0, 0).unwrap(),
+        )));
+        ev.set_rrule(Some(rrule));
+
+        let resolver = CalendarTimeZoneResolver::default();
+        let comp = CalComponent::Event(ev);
+        let mut iter = comp.dates_between(
+            Tz::Europe__Berlin
+                .with_ymd_and_hms(2025, 3, 27, 0, 0, 0)
+                .unwrap(),
+            Tz::Europe__Berlin
+                .with_ymd_and_hms(2025, 4, 2, 0, 0, 0)
+                .unwrap(),
+            &resolver,
+        );
+
+        assert_eq!(
+            iter.next().unwrap().1.with_timezone(&Utc),
+            ResolvedDateTime::from(
+                Utc.with_ymd_and_hms(2025, 3, 28, 8, 0, 0)
+                    .unwrap()
+                    .fixed_offset()
+            )
+        );
+        assert_eq!(
+            iter.next().unwrap().1.with_timezone(&Utc),
+            ResolvedDateTime::from(
+                Utc.with_ymd_and_hms(2025, 3, 29, 8, 0, 0)
+                    .unwrap()
+                    .fixed_offset()
+            )
+        );
+        assert_eq!(
+            iter.next().unwrap().1.with_timezone(&Utc),
+            ResolvedDateTime::from(
+                Utc.with_ymd_and_hms(2025, 3, 30, 7, 0, 0)
+                    .unwrap()
+                    .fixed_offset()
+            )
+        );
+        assert_eq!(
+            iter.next().unwrap().1.with_timezone(&Utc),
+            ResolvedDateTime::from(
+                Utc.with_ymd_and_hms(2025, 3, 31, 7, 0, 0)
+                    .unwrap()
+                    .fixed_offset()
+            )
+        );
+        assert_eq!(iter.next(), None);
     }
 }

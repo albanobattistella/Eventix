@@ -49,6 +49,13 @@ pub trait EventLike: PropertyProducer {
     /// See <https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.3>.
     fn last_modified(&self) -> Option<&CalDate>;
 
+    /// Returns the revision sequence of this calendar object (SEQUENCE).
+    ///
+    /// Missing sequence values are treated as revision 0 by mutating code paths.
+    ///
+    /// See <https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.4>.
+    fn sequence(&self) -> Option<u32>;
+
     /// Returns the beginning of this calendar object (DTSTART).
     ///
     /// For recurrent objects, this property is mandatory, because it marks the beginning of the
@@ -139,11 +146,7 @@ pub trait EventLike: PropertyProducer {
     /// address.
     fn is_owned_by<S: AsRef<str>>(&self, user: Option<S>) -> bool {
         match (self.organizer(), user) {
-            (Some(ev_org), Some(user))
-                if ev_org.address().to_lowercase() == user.as_ref().to_lowercase() =>
-            {
-                true
-            }
+            (Some(ev_org), Some(user)) => ev_org.matches_email(user),
             (Some(_), _) => false,
             (None, _) => true,
         }
@@ -165,10 +168,7 @@ pub trait EventLike: PropertyProducer {
     /// or not having a status is considered as [`CalPartStat::NeedsAction`].
     fn attendee_status<M: AsRef<str>>(&self, user_mail: M) -> Option<CalPartStat> {
         self.attendees().map(|atts| {
-            if let Some(att) = atts
-                .iter()
-                .find(|a| a.address() == user_mail.as_ref().to_lowercase())
-            {
+            if let Some(att) = atts.iter().find(|a| a.matches_email(&user_mail)) {
                 att.part_stat().unwrap_or(CalPartStat::NeedsAction)
             } else {
                 // if the user is not part of the list (e.g., invited via mailing list), it's
@@ -254,6 +254,9 @@ pub trait UpdatableEventLike: EventLike {
     /// Sets the date of the last modification.
     fn set_stamp(&mut self, date: CalDate);
 
+    /// Sets the revision sequence.
+    fn set_sequence(&mut self, sequence: Option<u32>);
+
     /// Sets the recurrence rule.
     ///
     /// Note that the recurrence rule being `Some` requires the recurrence id to be `None`.
@@ -287,6 +290,18 @@ pub trait UpdatableEventLike: EventLike {
 
     /// Sets the priority.
     fn set_priority(&mut self, prio: Option<u8>);
+
+    /// Updates revision metadata with the given timestamp.
+    fn touch_with(&mut self, now: CalDate) {
+        self.set_sequence(Some(self.sequence().unwrap_or(0).saturating_add(1)));
+        self.set_last_modified(now.clone());
+        self.set_stamp(now);
+    }
+
+    /// Updates revision metadata with the current timestamp.
+    fn touch(&mut self) {
+        self.touch_with(CalDate::now());
+    }
 }
 
 #[cfg(test)]
@@ -347,6 +362,10 @@ mod tests {
             comp.attendee_status("Alice@Example.com"),
             Some(CalPartStat::Accepted)
         );
+        assert_eq!(
+            comp.attendee_status("MAILTO:alice@example.com"),
+            Some(CalPartStat::Accepted)
+        );
 
         // user not listed -> NeedsAction
         assert_eq!(
@@ -384,7 +403,21 @@ mod tests {
         comp.set_organizer(Some(org));
         // matching user (case-insensitive)
         assert!(comp.is_owned_by(Some("Owner@Example.com")));
+        assert!(comp.is_owned_by(Some("MAILTO:owner@example.com")));
         // different user
         assert!(!comp.is_owned_by(Some("other@example.com")));
+    }
+
+    #[test]
+    fn touch_adds_and_increments_sequence() {
+        let mut comp = base_component();
+
+        assert_eq!(comp.sequence(), None);
+
+        comp.touch();
+        assert_eq!(comp.sequence(), Some(1));
+
+        comp.touch();
+        assert_eq!(comp.sequence(), Some(2));
     }
 }

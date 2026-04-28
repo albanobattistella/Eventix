@@ -57,8 +57,7 @@ async fn run_toggle(
 
     let exdate = form.rid.normalize_to(base.start().unwrap());
     base.toggle_exclude(exdate);
-    base.set_last_modified(CalDate::now());
-    base.set_stamp(CalDate::now());
+    base.touch();
     file.save()
         .with_context(|| format!("Unable to save item with uid {}", form.uid))?;
 
