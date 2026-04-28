@@ -86,6 +86,22 @@ name = "pages_collections_edit"
 path = "tests/pages/collections/edit.rs"
 
 [[test]]
+name = "pages_items_create_event"
+path = "tests/pages/items/create_event.rs"
+
+[[test]]
+name = "pages_items_create_todo"
+path = "tests/pages/items/create_todo.rs"
+
+[[test]]
+name = "pages_items_edit_event"
+path = "tests/pages/items/edit_event.rs"
+
+[[test]]
+name = "pages_items_edit_todo"
+path = "tests/pages/items/edit_todo.rs"
+
+[[test]]
 name = "radicale_sync"
 path = "tests/radicale/sync.rs"
 
