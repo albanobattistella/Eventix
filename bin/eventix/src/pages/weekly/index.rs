@@ -8,22 +8,25 @@ use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse},
 };
-use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc};
-use eventix_ical::objects::{CalCompType, CalPartStat, EventLike};
-use eventix_locale::{DateFlags, Locale, TimeFlags};
+use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone};
+use eventix_ical::objects::{CalCompType, EventLike};
+use eventix_locale::{DateFlags, Locale};
 use eventix_state::EventixState;
 use serde::Deserialize;
 use std::{collections::HashMap, fmt, sync::Arc};
 
+use crate::comps::occurrence::{OccurrenceMode, OccurrenceTemplate};
 use crate::html::filters;
 use crate::objects::{DayOccurrence, OccurrenceOverlap};
 use crate::pages::error::HTMLError;
 use crate::util::parse_human_date;
 
-struct Day<'a> {
+struct Day {
     date: NaiveDate,
-    allday: Vec<DayOccurrence<'a>>,
-    occurrences: Vec<DayOccurrence<'a>>,
+    allday: Vec<String>,
+    allday_ids: Vec<String>,
+    occurrences: Vec<String>,
+    occ_ids: Vec<String>,
 }
 
 #[derive(Default, Debug, Deserialize)]
@@ -34,9 +37,9 @@ pub struct Request {
 /// Fragment-only template for the weekly grid, rendered by the AJAX content endpoint.
 #[derive(Template)]
 #[template(path = "pages/weekly.htm")]
-struct WeeklyTemplate<'a> {
+struct WeeklyTemplate {
     locale: Arc<dyn Locale + Send + Sync>,
-    days: Vec<Day<'a>>,
+    days: Vec<Day>,
     today: NaiveDate,
     week_number: String,
     week_start: String,
@@ -152,6 +155,7 @@ pub async fn content(
 ) -> Result<impl IntoResponse, HTMLError> {
     let locale = state.lock().await.locale();
     let timezone = *locale.timezone();
+    let now = Local::now().with_timezone(&timezone);
 
     let date = parse_human_date(req.date, &timezone)?;
     let prev_week = date - Duration::days(7);
@@ -204,16 +208,38 @@ pub async fn content(
             day.set_overlap(*counts.get(&day.id()).unwrap());
         }
 
+        let mut allday_rendered = Vec::new();
+        let mut allday_ids = Vec::new();
+        for occ in allday {
+            allday_ids.push(occ.id().to_string());
+            allday_rendered.push(
+                OccurrenceTemplate::new(locale.clone(), &occ, OccurrenceMode::Block, date, &now)
+                    .render()
+                    .context("allday occurrence template")?,
+            );
+        }
+
+        let mut occ_rendered = Vec::new();
+        let mut occ_ids = Vec::new();
+        for occ in day_occs {
+            occ_ids.push(occ.id().to_string());
+            occ_rendered.push(
+                OccurrenceTemplate::new(locale.clone(), &occ, OccurrenceMode::Timed, date, &now)
+                    .render()
+                    .context("timed occurrence template")?,
+            );
+        }
+
         days.push(Day {
             date,
-            allday,
-            occurrences: day_occs,
+            allday: allday_rendered,
+            allday_ids,
+            occurrences: occ_rendered,
+            occ_ids,
         });
 
         date += Duration::days(1);
     }
-
-    let now = Utc::now().with_timezone(&timezone);
 
     let html = WeeklyTemplate {
         locale: locale.clone(),

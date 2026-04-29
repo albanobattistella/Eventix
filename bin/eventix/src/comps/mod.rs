@@ -13,6 +13,7 @@ pub mod datetime;
 pub mod datetimerange;
 pub mod editalarm;
 pub mod editmodes;
+pub mod occurrence;
 pub mod organizer;
 pub mod pagination;
 pub mod partstat;

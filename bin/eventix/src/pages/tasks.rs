@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use askama::Template;
 use chrono::{Duration, Local, NaiveDate, Utc};
 use eventix_ical::col::Occurrence;
 use eventix_ical::objects::{CalCompType, CalTodoStatus, EventLike};
@@ -9,28 +10,28 @@ use eventix_locale::Locale;
 use eventix_state::State;
 use std::sync::Arc;
 
+use crate::comps::occurrence::{OccurrenceMode, OccurrenceTemplate};
 use crate::objects::DayOccurrence;
 
-pub struct Day<'a> {
+pub struct Day {
     pub date: Option<NaiveDate>,
-    pub occurrences: Vec<DayOccurrence<'a>>,
+    pub occurrences: Vec<String>,
 }
 
-pub struct Tasks<'a> {
-    pub days: Vec<Day<'a>>,
-    pub today: NaiveDate,
+pub struct Tasks {
+    pub days: Vec<Day>,
 }
 
-impl<'a> Tasks<'a> {
-    pub fn new(state: &'a State, locale: &Arc<dyn Locale + Send + Sync>) -> Tasks<'a> {
+impl Tasks {
+    pub fn new(state: &State, locale: &Arc<dyn Locale + Send + Sync>) -> Tasks {
         Self::new_with_days(state, locale, 21)
     }
 
     pub fn new_with_days(
-        state: &'a State,
+        state: &State,
         locale: &Arc<dyn Locale + Send + Sync>,
         days: u32,
-    ) -> Tasks<'a> {
+    ) -> Tasks {
         let timezone = locale.timezone();
 
         let now = Local::now();
@@ -55,13 +56,28 @@ impl<'a> Tasks<'a> {
             .unwrap_or(start)
             .date_naive();
         let end_date = end.date_naive();
+
         while cur_date < end_date {
             let day_occs =
                 DayOccurrence::due_occurrences(&next_td_occs, settings, pers_alarms, cur_date);
             if !day_occs.is_empty() {
+                let occurrences = day_occs
+                    .iter()
+                    .map(|occ| {
+                        OccurrenceTemplate::new(
+                            locale.clone(),
+                            occ,
+                            OccurrenceMode::Sidebar,
+                            cur_date,
+                            &start,
+                        )
+                        .render()
+                        .expect("rendering occurrence template failed")
+                    })
+                    .collect();
                 days.push(Day {
                     date: Some(cur_date),
-                    occurrences: day_occs,
+                    occurrences,
                 });
             }
 
@@ -102,15 +118,27 @@ impl<'a> Tasks<'a> {
             .collect::<Vec<_>>();
         unplanned_occs.sort_by_key(|i| i.created().cloned());
         if !unplanned_occs.is_empty() {
+            let today = Utc::now().with_timezone(timezone).date_naive();
+            let occurrences = unplanned_occs
+                .iter()
+                .map(|occ| {
+                    OccurrenceTemplate::new(
+                        locale.clone(),
+                        occ,
+                        OccurrenceMode::Sidebar,
+                        today,
+                        &start,
+                    )
+                    .render()
+                    .expect("rendering occurrence template failed")
+                })
+                .collect();
             days.push(Day {
                 date: None,
-                occurrences: unplanned_occs,
+                occurrences,
             });
         }
 
-        Self {
-            days,
-            today: Utc::now().with_timezone(timezone).date_naive(),
-        }
+        Self { days }
     }
 }

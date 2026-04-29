@@ -17,7 +17,7 @@ mod events;
 mod tasks;
 
 use axum::Router;
-use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
+use chrono::{DateTime, NaiveDateTime, TimeZone};
 use chrono_tz::Tz;
 use eventix_ical::col::ColError;
 use eventix_ical::objects::CalCompType;
@@ -44,7 +44,6 @@ pub fn router(state: EventixState) -> Router {
 }
 
 pub struct Page {
-    now: DateTime<Tz>,
     errors: Vec<String>,
     infos: Vec<String>,
     calendars: Calendars,
@@ -56,7 +55,6 @@ pub struct Page {
 impl Default for Page {
     fn default() -> Self {
         Self {
-            now: Local::now().with_timezone(&Tz::UTC),
             errors: Vec::new(),
             infos: Vec::new(),
             calendars: Calendars::default(),
@@ -70,7 +68,6 @@ impl Default for Page {
 impl Page {
     pub async fn new(state: &EventixState) -> Self {
         let state = state.lock().await;
-        let locale = state.locale();
 
         let calendar = Arc::new(match state.misc().last_calendar(CalCompType::Todo) {
             Some(cal) => cal.clone(),
@@ -81,7 +78,6 @@ impl Page {
         });
 
         Self {
-            now: Local::now().with_timezone(locale.timezone()),
             calendars: Calendars::new(&state, |_id, _settings| true),
             quickcals: if !calendars.0.is_empty() {
                 Some(CalComboTemplate::new(

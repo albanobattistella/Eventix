@@ -8,26 +8,28 @@ use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse},
 };
-use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone};
 use eventix_ical::{
-    objects::{CalCompType, CalPartStat, EventLike},
+    objects::{CalCompType, EventLike},
     util,
 };
-use eventix_locale::{Locale, TimeFlags};
+use eventix_locale::Locale;
 use eventix_state::EventixState;
 use serde::Deserialize;
 use std::sync::Arc;
 
+use crate::comps::occurrence::{OccurrenceMode, OccurrenceTemplate};
 use crate::html::filters;
 use crate::objects::DayOccurrence;
 use crate::pages::error::HTMLError;
 use crate::util::parse_human_date;
 
-struct Day<'a> {
+struct Day {
     date: Option<NaiveDate>,
     show_month: bool,
     cur_month: bool,
-    occurrences: Vec<DayOccurrence<'a>>,
+    occurrences: Vec<String>,
+    occ_ids: Vec<String>,
 }
 
 #[derive(Default, Debug, Deserialize)]
@@ -38,10 +40,10 @@ pub struct Request {
 /// Fragment-only template for the calendar grid, rendered by the AJAX content endpoint.
 #[derive(Template)]
 #[template(path = "pages/monthly.htm")]
-struct MonthlyTemplate<'a> {
+struct MonthlyTemplate {
     locale: Arc<dyn Locale + Send + Sync>,
     weekdays: Vec<String>,
-    days: Vec<Day<'a>>,
+    days: Vec<Day>,
     today: NaiveDate,
     month: String,
     prev_month: String,
@@ -55,6 +57,7 @@ pub async fn content(
 ) -> Result<impl IntoResponse, HTMLError> {
     let locale = state.lock().await.locale();
     let timezone = *locale.timezone();
+    let now = Local::now().with_timezone(&timezone);
 
     let weekdays = vec![
         locale.translate("Monday").to_string(),
@@ -103,12 +106,23 @@ pub async fn content(
     while date < end {
         let day_occs =
             DayOccurrence::occurrences_on(&ev_occs, settings, pers_alarms, date, &timezone);
+        let mut occurrences = Vec::new();
+        let mut occ_ids = Vec::new();
+        for occ in day_occs {
+            occ_ids.push(occ.id().to_string());
+            occurrences.push(
+                OccurrenceTemplate::new(locale.clone(), &occ, OccurrenceMode::Block, date, &now)
+                    .render()
+                    .context("occurrence template")?,
+            );
+        }
         days.push(Day {
             date: Some(date),
             show_month: date.day() == 1
                 || date.day() == util::month_days(date.year(), date.month()),
             cur_month: date >= month_start && date < month_end,
-            occurrences: day_occs,
+            occurrences,
+            occ_ids,
         });
 
         date += Duration::days(1);
@@ -123,7 +137,7 @@ pub async fn content(
         ),
         prev_month: format!("{pyear}-{pmonth}"),
         next_month: format!("{nyear}-{nmonth}"),
-        today: Utc::now().with_timezone(&timezone).date_naive(),
+        today: now.date_naive(),
         days,
         locale,
     }

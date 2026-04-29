@@ -99,62 +99,18 @@
                     >
                         <div class="ev_week_cell">
                             {% for occ in day.allday %}
-                                <div
-                                    onclick="fireEvent(new SelectEvent('{{ occ.uid() }}',
-                                                                       'ev_id_{{ occ.uid()|to_id }}',
-                                                                       '{{ occ.rid_str() }}',
-                                                                       '{{ occ.id() }}',
-                                                                       event))"
-                                    style="text-align: center"
-                                    id="{{ occ.id() }}"
-                                    data-uid="{{ occ.uid() }}"
-                                    data-rid="{{ occ.rid_str() }}"
-                                    class="
-                                           ev_event_occurrence
-                                           ev_week_event
-                                           ev_cal_src ev_cal_src_{{ occ.directory() }}
-                                           ev_id_{{ occ.uid()|to_id }}
-                                    {% match occ.status_class() %}
-                                        {% when Some with (cl) %}
-                                        ev_status_{{ cl }}
-                                        {% when _ %}
-                                    {% endmatch %}
-                                           "
-                                >
-                                    {% if !occ.is_owner() %}
-                                        <div
-                                            class="ev_vertbar
-                                            {% match occ.participant_status().unwrap_or(CalPartStat::NeedsAction) %}
-                                                {% when CalPartStat::NeedsAction %}
-                                                ev_vertbar_needsaction {% when stat %}
-                                                ev_vertbar_{{ stat }}
-                                            {% endmatch %}
-                                            "
-                                        ></div>
-                                    {% endif %}
-                                    <div style="padding: 5px">
-                                        {% if occ.rid().is_some() || occ.rrule().is_some() %}
-                                            <i class="bi bi-arrow-clockwise ev_right_icon"></i>
-                                        {% endif %}
-                                        {% if occ.is_overwritten() %}
-                                            <i class="bi bi-pencil ev_right_icon"></i>
-                                        {% endif %}
-                                        {% if occ.has_effective_alarms() %}
-                                            <i class="bi bi-alarm ev_right_icon"></i>
-                                        {% endif %}
-                                        {{ occ.summary().unwrap() }}
-                                    </div>
-                                </div>
+                                {{ occ|safe }}
                                 <!-- prettier-ignore-start -->
                                 <script type="text/javascript">
                                     $(function () {
+                                        const $el = $("#{{ day.allday_ids[loop.index0] }}");
                                         const op = new DragOperation(
-                                            {{ occ.is_owner() }},
-                                            {{ occ.is_recurrent() }},
+                                            $el.data("owner"),
+                                            $el.data("recurrent"),
                                             "ev_week_event",
                                             "ev_week_allday",
                                         );
-                                        $("#{{ occ.id() }}").data("drag", op).draggable(op.settings());
+                                        $el.data("drag", op).draggable(op.settings());
                                     });
                                 </script>
                                 <!-- prettier-ignore-end -->
@@ -214,122 +170,24 @@
                                     </div>
                                 {% endfor %}
                                 {% for occ in day.occurrences %}
-                                    <div
-                                        style="position: absolute;
-                                               top: {{ occ.minute_off(day.date.clone()) + 1 }}px;
-                                               height: calc({{ occ.minute_duration(day.date.clone()) }}px - 4px);
-                                               width: calc({{ occ.overlap().width * (100 / occ.overlap().slots) }}% - 4px);
-                                               left: calc({{ occ.overlap().offset * (100 / occ.overlap().slots) }}% + 1px);
-                                               padding: 0px"
-                                        onclick="fireEvent(new SelectEvent('{{ occ.uid() }}',
-                                                                           'ev_id_{{ occ.uid()|to_id }}',
-                                                                           '{{ occ.rid_str() }}',
-                                                                           '{{ occ.id() }}',
-                                                                           event))"
-                                        id="{{ occ.id() }}"
-                                        data-uid="{{ occ.uid() }}"
-                                        data-rid="{{ occ.rid_str() }}"
-                                        data-start-hour="{{ occ.occurrence_start_hour() }}"
-                                        data-start-min="{{ occ.occurrence_start_min() }}"
-                                        data-end-hour="{{ occ.occurrence_end_hour() }}"
-                                        data-end-min="{{ occ.occurrence_end_min() }}"
-                                        class="
-                                               ev_event_occurrence
-                                               ev_week_event
-                                               ev_cal_src ev_cal_src_{{ occ.directory() }}
-                                               ev_id_{{ occ.uid()|to_id }}
-                                        {% match occ.status_class() %}
-                                            {% when Some with (cl) %}
-                                            ev_status_{{ cl }}
-                                            {% when _ %}
-                                        {% endmatch %}
-                                              "
-                                    >
-                                        {% if occ.is_owner() && occ.occurrence_starts_on(day.date.clone()) %}
-                                            <div class="ev_resize_handle ev_resize_top"></div>
-                                        {% endif %}
-                                        {% if occ.is_owner() && occ.occurrence_ends_on(day.date.clone()) %}
-                                            <div class="ev_resize_handle ev_resize_bottom"></div>
-                                        {% endif %}
-                                        {% if !occ.is_owner() %}
-                                            <div
-                                                class="ev_vertbar
-                                                {% match occ.participant_status().unwrap_or(CalPartStat::NeedsAction) %}
-                                                    {% when CalPartStat::NeedsAction %}
-                                                    ev_vertbar_needsaction {% when stat %}
-                                                    ev_vertbar_{{ stat }}
-                                                {% endmatch %}
-                                                       "
-                                            ></div>
-                                        {% endif %}
-                                        <div
-                                            style="padding: 2px;
-                                                   height: calc({{ occ.minute_duration(day.date.clone()) }}px - 8px);"
-                                        >
-                                            {% if occ.rid().is_some() || occ.rrule().is_some() %}
-                                                <i class="bi bi-arrow-clockwise ev_right_icon"></i>
-                                            {% endif %}
-                                            {% if occ.is_overwritten() %}
-                                                <i class="bi bi-pencil ev_right_icon"></i>
-                                            {% endif %}
-                                            {% if occ.has_effective_alarms() %}
-                                                <i class="bi bi-alarm ev_right_icon"></i>
-                                            {% endif %}
-                                            {{ occ.summary().unwrap() }}<br />
-                                            {%
-                                                if occ.occurrence_starts_on(day.date.clone()) &&
-                                                !occ.occurrence_ends_on(day.date.clone())
-                                            %}
-                                                <i class="bi bi-arrow-bar-right"></i>
-                                                {{
-                                                    &occ.occurrence_start().unwrap()|
-                                                    time(locale, TimeFlags::Short)
-                                                }}
-                                                <!-- prettier-ignore-start -->
-                                            {%
-                                                else if !occ.occurrence_starts_on(day.date.clone()) &&
-                                                occ.occurrence_ends_on(day.date.clone())
-                                            %}
-                                            <!-- prettier-ignore-end -->
-                                                <i class="bi bi-arrow-bar-left"></i>
-                                                {{
-                                                    &occ.occurrence_end().unwrap()|
-                                                    time(locale, TimeFlags::Short)
-                                                }}
-                                            {% else %}
-                                                {{
-                                                    &occ.occurrence_start().unwrap()|
-                                                    time(locale, TimeFlags::Short)
-                                                }}
-                                                -
-                                                {{
-                                                    &occ.occurrence_end().unwrap()|
-                                                    time(locale, TimeFlags::Short)
-                                                }}
-                                            {% endif %}
-                                        </div>
-                                    </div>
+                                    {{ occ|safe }}
                                     <!-- prettier-ignore-start -->
                                     <script type="text/javascript">
                                         $(function () {
+                                            const $el = $("#{{ day.occ_ids[loop.index0] }}");
                                             const op = new DragOperation(
-                                                {{ occ.is_owner() }},
-                                                {{ occ.is_recurrent() }},
+                                                $el.data("owner"),
+                                                $el.data("recurrent"),
                                                 "ev_week_event",
                                                 "ev_hour_cell",
                                             );
-                                            $("#{{ occ.id() }}").data("drag", op).draggable(op.settings());
-                                        });
-                                    </script>
-                                    <!-- prettier-ignore-end -->
-                                    {% if occ.is_owner() %}
-                                        <script type="text/javascript">
-                                            $(function () {
+                                            $el.data("drag", op).draggable(op.settings());
+
+                                            if ($el.data("owner")) {
                                                 const rop = new ResizeOperation(
-                                                    "{{ occ.uid() }}",
-                                                    "{{ occ.rid_str() }}",
+                                                    $el.data("uid"),
+                                                    $el.data("rid"),
                                                 );
-                                                const $el = $("#{{ occ.id() }}");
                                                 $el.data("resize", rop);
                                                 $el.find(".ev_resize_top").on(
                                                     "mousedown",
@@ -343,9 +201,10 @@
                                                         rop.start(e, $el[0], "bottom");
                                                     },
                                                 );
-                                            });
-                                        </script>
-                                    {% endif %}
+                                            }
+                                        });
+                                    </script>
+                                    <!-- prettier-ignore-end -->
                                 {% endfor %}
                                 {% if day.date == today %}
                                     <div

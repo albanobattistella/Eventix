@@ -2,33 +2,35 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use askama::Template;
 use chrono::{Duration, Local, NaiveDate};
 use eventix_ical::objects::{CalCompType, EventLike};
 use eventix_locale::Locale;
 use eventix_state::State;
 use std::sync::Arc;
 
+use crate::comps::occurrence::{OccurrenceMode, OccurrenceTemplate};
 use crate::objects::DayOccurrence;
 
-pub struct Day<'a> {
+pub struct Day {
     pub date: Option<NaiveDate>,
-    pub occurrences: Vec<DayOccurrence<'a>>,
+    pub occurrences: Vec<String>,
 }
 
-pub struct Events<'a> {
-    pub days: Vec<Day<'a>>,
+pub struct Events {
+    pub days: Vec<Day>,
 }
 
-impl<'a> Events<'a> {
-    pub fn new(state: &'a State, locale: &Arc<dyn Locale + Send + Sync>) -> Events<'a> {
+impl Events {
+    pub fn new(state: &State, locale: &Arc<dyn Locale + Send + Sync>) -> Events {
         Self::new_with_days(state, locale, 7)
     }
 
     pub fn new_with_days(
-        state: &'a State,
+        state: &State,
         locale: &Arc<dyn Locale + Send + Sync>,
         days: u32,
-    ) -> Events<'a> {
+    ) -> Events {
         let timezone = locale.timezone();
 
         let now = Local::now();
@@ -61,9 +63,23 @@ impl<'a> Events<'a> {
                 timezone,
             );
             if !day_occs.is_empty() {
+                let occurrences = day_occs
+                    .iter()
+                    .map(|occ| {
+                        OccurrenceTemplate::new(
+                            locale.clone(),
+                            occ,
+                            OccurrenceMode::Sidebar,
+                            cur_date,
+                            &start,
+                        )
+                        .render()
+                        .expect("rendering occurrence template failed")
+                    })
+                    .collect();
                 days.push(Day {
                     date: Some(cur_date),
-                    occurrences: day_occs,
+                    occurrences,
                 });
             }
 

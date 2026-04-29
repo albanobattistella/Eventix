@@ -10,8 +10,7 @@ use axum::{
     response::{Html, IntoResponse},
     routing::get,
 };
-use eventix_ical::objects::{CalDate, CalPartStat, EventLike};
-use eventix_locale::{DateFlags, Locale, TimeFlags};
+use eventix_locale::{DateFlags, Locale};
 use eventix_state::EventixState;
 use std::sync::Arc;
 
@@ -25,11 +24,11 @@ use crate::{
 /// Rendered by the AJAX sidebar endpoint and injected into `#sidebar-content` on the client.
 #[derive(Template)]
 #[template(path = "sidebar.htm")]
-struct SidebarTemplate<'a> {
+struct SidebarTemplate {
     page: Page,
     locale: Arc<dyn Locale + Send + Sync>,
-    events: Events<'a>,
-    tasks: Tasks<'a>,
+    events: Events,
+    tasks: Tasks,
 }
 
 /// Renders the sidebar fragment (next events and next tasks boxes).
