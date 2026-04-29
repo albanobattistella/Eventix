@@ -152,3 +152,45 @@ function loadPageContent(pageSlug, containerId, queryStr, onLoaded) {
     // now replace content block
     fetchContent(pageSlug, containerId, queryStr, onLoaded);
 }
+
+// Resizes the boxes in sidebar, the weekly scrollarea, and monthly table to the available size
+function resizeBoxes() {
+    const bottom = $(window).height() - 70;
+
+    // Resize events and tasks box to fit within the available height.
+    const boxEvents = $("#box_events");
+    if (boxEvents.length) {
+        const top = boxEvents.offset().top;
+        const availableYSpace = Math.max(400, bottom - top);
+        boxEvents.css("height", availableYSpace / 2 - 12);
+        $("#box_tasks").css("height", availableYSpace / 2 - 12);
+    }
+
+    // As the week area is scrollable, resize it to fit within the height as well.
+    let weekScrollArea = $("#week_scroll_area");
+    if (weekScrollArea.length) {
+        const top = weekScrollArea.offset().top;
+        weekScrollArea.css("height", bottom - top);
+    }
+
+    // Let the month view grow and shrink with the viewport, but keep day cells within
+    // a readable range so the grid never becomes too cramped or too tall.
+    const monthTable = $("#ev_month_table");
+    if (monthTable.length) {
+        const monthCells = monthTable.find("td[data-date]");
+        const rowCount = Math.max(1, monthCells.length / 7);
+        const top = monthCells.first().offset().top;
+        const minCellHeight = 130;
+        const maxCellHeight = 190;
+        const cellHeight = Math.max(
+            minCellHeight,
+            Math.min(maxCellHeight, Math.floor((bottom - top) / rowCount)),
+        );
+
+        monthTable.find(".ev_month_td").css("height", cellHeight);
+        monthTable.find(".ev_month_cell").each(function () {
+            const headerHeight = $(this).siblings(".ev_month_day_header").outerHeight() || 0;
+            $(this).css("height", Math.max(60, cellHeight - headerHeight - 2));
+        });
+    }
+}

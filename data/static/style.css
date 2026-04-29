@@ -623,6 +623,28 @@ span.ev_msg_error span.ev_msg_info {
     height: 30px;
 }
 
+.ev_occ_content {
+    padding: 5px;
+}
+.ev_occ_block_center {
+    text-align: center;
+}
+
+.ev_occ_timed {
+    position: absolute;
+    padding: 0;
+}
+.ev_occ_timed .ev_occ_content {
+    padding: 2px;
+}
+
+.ev_occ_sidebar.ev_occ_content {
+    padding: 5px;
+}
+.ev_occ_sidebar_allday_event.ev_occ_content {
+    padding-left: 12px;
+}
+
 .ev_today {
     background-color: #fff8a2 !important;
     font-weight: bold;
@@ -681,7 +703,7 @@ span.ev_msg_error span.ev_msg_info {
 
 .ev_month_td {
     max-width: 3cm;
-    height: 3cm;
+    height: 130px;
     vertical-align: top;
     padding: 0px !important;
 }
@@ -699,7 +721,7 @@ span.ev_msg_error span.ev_msg_info {
 }
 
 .ev_month_cell {
-    height: 110px;
+    height: 104px;
     overflow-y: scroll;
     overscroll-behavior-y: contain;
 }
