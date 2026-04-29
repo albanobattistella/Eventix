@@ -1,9 +1,5 @@
 # AGENTS.md
 
-This file provides guidance for agentic coding agents operating in this
-repository. It summarizes build/test commands, workspace structure, and
-project-specific code style and architectural conventions.
-
 The project is a Rust workspace built with Cargo.
 
 ## PROJECT OVERVIEW
@@ -25,64 +21,13 @@ Workspace layout:
 
 Workspace members are defined in the root Cargo.toml under [workspace].
 
-## BUILD COMMANDS
-
-Build entire workspace:
-
-    cargo build
-
-Release build:
-
-    cargo build --release
-
-Build a specific crate:
-
-    cargo build -p <crate-name>
-
-Example:
-
-    cargo build -p eventix
-
-Check only (faster, no artifacts):
-
-    cargo check
-
 ## TEST COMMANDS
 
 Use `./b test` for all test execution so bundled development tools such as
-`contrib/vdirsyncer` are available on `PATH`.
-
-Run all tests in workspace:
-
-    ./b test
-
-Run tests for a specific crate:
-
-    ./b test -p <crate-name>
-
-Example:
+`contrib/vdirsyncer` are available on `PATH`. You can append the same arguments
+as for `cargo test`. So for example:
 
     ./b test -p eventix-ical
-
-Run a single test by exact name:
-
-    ./b test <test_name>
-
-Example:
-
-    ./b test recur_parses_weekly
-
-Run tests matching a substring:
-
-    ./b test recur
-
-Run tests in a specific module path:
-
-    ./b test parser::prop
-
-Show output from passing tests:
-
-    ./b test --nocapture
 
 Agents should prefer running tests at the smallest relevant scope first
 (single crate or single test) before running the full workspace suite.
@@ -93,44 +38,18 @@ Format code (required before commit):
 
     ./b format
 
-Check formatting in CI mode:
-
-    ./b format-check
-
-Run Clippy (all targets and features):
+Run Clippy (required before commit):
 
     cargo clippy --all-targets --all-features
 
 Treat Clippy warnings as actionable unless there is a strong reason not to.
-
-No custom rustfmt.toml or clippy configuration is present, so default
-Rust style conventions apply. Please wrap lines at a maximum width of 100
-characters for new or modified code to keep diffs readable and consistent
-with project conventions.
-
-## ARCHITECTURE GUIDELINES
-
-The workspace is layered:
-
-1. libs/ contain domain logic and reusable components.
-2. bin/ contain thin binaries that wire together libraries.
-
-Agents should:
-
-- Prefer adding logic to libs/ rather than bin/.
-- Keep binaries focused on CLI wiring, configuration, and orchestration.
-- Avoid circular dependencies between library crates.
-- Preserve clear separation between parsing, domain objects, and state.
-
-Tests are colocated with modules using #[cfg(test)]. Follow this pattern.
 
 ## CODE STYLE GUIDELINES
 
 General Rust style:
 
 - Follow standard Rust formatting (rustfmt defaults).
-- Wrap doc comments and other newly added or modified source lines at a maximum width of 100
-  characters per line.
+- Wrap lines at a maximum width of 100 characters per line.
 - Use explicit imports; avoid glob imports unless clearly justified.
 - Group imports: std, external crates, then internal crates.
 - Keep modules small and focused.
@@ -269,17 +188,6 @@ They are not part of the Cargo build graph.
 
 Agents should not modify tooling unless explicitly requested.
 
-Never perform state-changing git commands (git stash, git commit, etc.) without explicit request
-from the user.
-
-## CURSOR / COPILOT RULES
-
-No .cursor/rules/, .cursorrules, or
-.github/copilot-instructions.md files are present.
-
-If such files are added in the future, agents must treat them as
-authoritative guidance and update this document accordingly.
-
 ## SAFE WORKFLOW FOR AGENTS
 
 Before committing changes:
@@ -291,5 +199,5 @@ Before committing changes:
 When modifying parsing or recurrence logic in libs/ical or state logic
 in libs/state, always run that crate's full test suite.
 
-Avoid destructive git commands. Do not amend commits unless explicitly
-requested. Never reset unrelated changes in the working tree.
+Never perform state-changing git commands (git stash, git commit, etc.)
+without explicit request from the user.
