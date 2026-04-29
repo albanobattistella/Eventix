@@ -681,7 +681,7 @@ span.ev_msg_error span.ev_msg_info {
 
 .ev_month_td {
     max-width: 3cm;
-    height: 3cm;
+    height: 130px;
     vertical-align: top;
     padding: 0px !important;
 }
@@ -699,7 +699,7 @@ span.ev_msg_error span.ev_msg_info {
 }
 
 .ev_month_cell {
-    height: 110px;
+    height: 104px;
     overflow-y: scroll;
     overscroll-behavior-y: contain;
 }
