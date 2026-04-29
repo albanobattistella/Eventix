@@ -10,7 +10,7 @@ use gtk::gio;
 use gtk::glib;
 use gtk::{
     prelude::*, Align, Box as GtkBox, Button, DropDown, Image, Label, ListItem, Orientation,
-    SignalListItemFactory, StringObject, Window,
+    ScrolledWindow, SignalListItemFactory, StringObject, Window,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -123,10 +123,17 @@ impl ImportView {
             list_box.append(&row);
         }
 
-        vbox.append(&list_box);
+        let scrolled = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .min_content_height(100)
+            .vexpand(true)
+            .child(&list_box)
+            .build();
+        vbox.append(&scrolled);
 
         // Horizontal container for "Calendar:" + dropdown
         let calendar_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        calendar_box.set_hexpand(true);
 
         let calendar_label = gtk::Label::new(Some(&format!("{}:", locale.translate("Calendar"))));
         calendar_label.set_use_markup(true);
@@ -154,12 +161,14 @@ impl ImportView {
 
         let (calendar_dropdown, cal_entries) =
             Self::create_color_dropdown(filtered_cals.iter().copied());
+        calendar_dropdown.set_hexpand(true);
         calendar_box.append(&calendar_dropdown);
 
         vbox.append(&calendar_box);
 
         // Buttons
         let button_box = GtkBox::new(Orientation::Horizontal, 8);
+        button_box.set_halign(Align::End);
         let import_button = Button::with_label(locale.translate("Import"));
         let cancel_button = Button::with_label(locale.translate("Cancel"));
         button_box.append(&import_button);
@@ -250,6 +259,7 @@ impl ImportView {
 
     fn create_component_row(icon: &Pixbuf, text: &str) -> GtkBox {
         let row = GtkBox::new(Orientation::Horizontal, 8);
+        row.set_hexpand(true);
 
         // icon
         let image = Image::from_pixbuf(Some(icon));
@@ -261,6 +271,8 @@ impl ImportView {
         label.set_xalign(0.0);
         label.set_use_markup(true);
         label.set_valign(Align::Start);
+        label.set_hexpand(true);
+        label.set_wrap(true);
         row.append(&label);
 
         row
@@ -299,8 +311,11 @@ impl ImportView {
         factory.connect_setup(|_, list_item| {
             let list_item = list_item.downcast_ref::<ListItem>().unwrap();
             let hbox = GtkBox::new(Orientation::Horizontal, 4);
+            hbox.set_hexpand(true);
             let image = Image::new();
             let label = Label::new(None);
+            label.set_hexpand(true);
+            label.set_xalign(0.0);
             hbox.append(&image);
             hbox.append(&label);
             list_item.set_child(Some(&hbox));
