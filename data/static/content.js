@@ -167,10 +167,10 @@ function resizeBoxes() {
     }
 
     // As the week area is scrollable, resize it to fit within the height as well.
-    let week_scroll_area = $("#week_scroll_area");
-    if (week_scroll_area.length) {
-        const top = week_scroll_area.offset().top;
-        week_scroll_area.css("height", bottom - top);
+    let weekScrollArea = $("#week_scroll_area");
+    if (weekScrollArea.length) {
+        const top = weekScrollArea.offset().top;
+        weekScrollArea.css("height", bottom - top);
     }
 
     // Let the month view grow and shrink with the viewport, but keep day cells within
