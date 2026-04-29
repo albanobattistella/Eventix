@@ -163,7 +163,7 @@ pub async fn handler(
             // `date` (ForwardFrom), ignoring occurrence end. Using only the start ensures
             // correctness when the end is unknown (e.g. a recurring task with no DUE date) and
             // avoids ambiguity when occurrences overlap.
-            file.occurrences_between(date, end, |_| true)
+            file.occurrences_between(date, end, |o| o.is_recurrent())
                 .filter(|o| match req.dir {
                     Direction::Forward => o.occurrence_start().unwrap() > date,
                     _ => o.occurrence_start().unwrap() >= date,
@@ -175,7 +175,7 @@ pub async fn handler(
             let start = min_datetime(*locale.timezone());
             let end = date;
             let occs = file
-                .occurrences_between(start, end, |_| true)
+                .occurrences_between(start, end, |o| o.is_recurrent())
                 // Select only occurrences whose start is strictly before `date`, ignoring
                 // occurrence end. This mirrors the Forward direction and avoids pulling in
                 // occurrences that merely overlap the boundary.
