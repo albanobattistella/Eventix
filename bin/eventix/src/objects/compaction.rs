@@ -27,6 +27,9 @@ fn dst_error_msg<'a>(locale: &'a (dyn Locale + Send + Sync), err: &ParseError) -
 }
 
 pub trait CompAction {
+    fn calendar(&self) -> Option<&String> {
+        None
+    }
     fn summary(&self) -> &String;
     fn location(&self) -> &String;
     fn description(&self) -> &String;
@@ -42,6 +45,11 @@ pub trait CompAction {
         locale: &Arc<dyn Locale + Send + Sync>,
         ctype: CalCompType,
     ) -> bool {
+        if self.calendar().is_some_and(|calendar| calendar.is_empty()) {
+            page.add_error(locale.translate("error.create_calendar_first"));
+            return false;
+        }
+
         if self.summary().is_empty() {
             page.add_error(locale.translate("error.summary_empty"));
             return false;

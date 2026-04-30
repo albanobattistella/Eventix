@@ -34,6 +34,7 @@ pub struct Request {
 
 #[derive(Default, Debug, Deserialize)]
 pub struct CompNew {
+    #[serde(default)]
     calendar: String,
     summary: String,
     location: String,
@@ -113,6 +114,9 @@ impl CompNew {
 }
 
 impl CompAction for CompNew {
+    fn calendar(&self) -> Option<&String> {
+        Some(&self.calendar)
+    }
     fn summary(&self) -> &String {
         &self.summary
     }

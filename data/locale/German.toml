@@ -23,6 +23,7 @@
 
 "error.collection_exists" = "Eine Gruppe mit diesem Namen existiert bereits."
 "error.calendar_name" = "Bitte gib einen Kalendernamen an!"
+"error.create_calendar_first" = "Bitte erstelle zuerst einen Kalender."
 "error.calendar_write_protected" = "Der Kalender '{}' ist vorübergehend schreibgeschützt, da eine Synchronisierung im Gange ist."
 "error.collection_name_chars" = "Bitte gib einen nicht-leeren Namen an, der ausschließlich die Zeichen A-Z, a-z, 0-9, _, und - enthält."
 "error.summary_empty" = "Die Zusammenfassung darf nicht leer sein."
