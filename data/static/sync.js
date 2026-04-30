@@ -23,12 +23,18 @@ function stopSpinning(spinnerId, error) {
 
 function postWithSpinner(spinnerId, url, onresponse) {
     startSpinning(spinnerId);
-    postRequest(url, function (data) {
-        const error = handleCalErrors(data);
-        const auth_error = handleAuthErrors(data, url, spinnerId);
-        stopSpinning(spinnerId, error || auth_error);
-        onresponse(data, !auth_error);
-    });
+    postRequest(
+        url,
+        function (data) {
+            const error = handleCalErrors(data);
+            const auth_error = handleAuthErrors(data, url, spinnerId);
+            stopSpinning(spinnerId, error || auth_error);
+            onresponse(data, !auth_error);
+        },
+        function () {
+            stopSpinning(spinnerId, true);
+        },
+    );
 }
 
 function handleAuthErrors(data, op_url, spinnerId) {
