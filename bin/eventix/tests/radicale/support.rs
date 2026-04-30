@@ -212,6 +212,14 @@ impl RadicalePeer {
             .expect("created calendar does not exist?")
     }
 
+    pub async fn try_create_calendar(&self, name: &str) -> (StatusCode, String) {
+        post_query(
+            make_calendars_api_router(self.state.clone()),
+            &format!("/api/calendars/addcal?col_id={COL_ID}&name={name}"),
+        )
+        .await
+    }
+
     pub async fn delete_calendar_by_folder(&self, folder: &str) {
         let (status, body) = post_query(
             make_calendars_api_router(self.state.clone()),
@@ -219,6 +227,14 @@ impl RadicalePeer {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "unexpected body:\n{body}");
+    }
+
+    pub async fn try_delete_calendar_by_folder(&self, folder: &str) -> (StatusCode, String) {
+        post_query(
+            make_calendars_api_router(self.state.clone()),
+            &format!("/api/calendars/calop?col_id={COL_ID}&folder={folder}&op=Delete"),
+        )
+        .await
     }
 
     pub async fn create_todo(&self, cal_id: &str, summary: &str) -> anyhow::Result<()> {
@@ -359,14 +375,16 @@ pub struct RadicalePair {
 }
 
 impl RadicalePair {
-    pub async fn new() -> Self {
+    pub async fn new(consumer_read_only: bool, producer_read_only: bool) -> Self {
         let server = RadicaleServer::start().expect("start Radicale test server");
         // Start two isolated Eventix peers against the same Radicale backend so tests can model
         // one side producing remote changes and the other side consuming them.
-        let (consumer_state, consumer_tmp) =
-            crate::helper::make_state_from_col(Self::make_empty_collection(server.url()));
-        let (producer_state, producer_tmp) =
-            crate::helper::make_state_from_col(Self::make_empty_collection(server.url()));
+        let (consumer_state, consumer_tmp) = crate::helper::make_state_from_col(
+            Self::make_collection(server.url(), consumer_read_only),
+        );
+        let (producer_state, producer_tmp) = crate::helper::make_state_from_col(
+            Self::make_collection(server.url(), producer_read_only),
+        );
 
         Self {
             _server: server,
@@ -375,11 +393,11 @@ impl RadicalePair {
         }
     }
 
-    fn make_empty_collection(server_url: &str) -> CollectionSettings {
+    fn make_collection(server_url: &str, read_only: bool) -> CollectionSettings {
         CollectionSettings::new(SyncerType::VDirSyncer {
             email: EmailAccount::new("Test User".to_string(), "test@example.com".to_string()),
             url: server_url.to_string(),
-            read_only: false,
+            read_only,
             username: Some(USERNAME.to_string()),
             password_cmd: password_cmd(),
             time_span: Default::default(),
@@ -396,7 +414,7 @@ impl RadicalePair {
 
     pub fn spawn_peer(&self) -> RadicalePeer {
         let (state, tmp) =
-            crate::helper::make_state_from_col(Self::make_empty_collection(self._server.url()));
+            crate::helper::make_state_from_col(Self::make_collection(self._server.url(), false));
         RadicalePeer::new(state, tmp)
     }
 }

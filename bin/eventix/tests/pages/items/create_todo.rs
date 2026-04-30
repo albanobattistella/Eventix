@@ -9,12 +9,12 @@ use chrono::NaiveDate;
 use eventix_ical::objects::{CalDate, CalTodoStatus, EventLike};
 use tempfile::TempDir;
 
+use eventix_state::{CollectionSettings, SyncerType};
 use helper::create::{assert_success, read_created_ics};
 use helper::{
     CAL_ID, assert_error, assert_no_ics, encode_form, first_component, make_router, make_state,
     make_state_from_col, merge_fields, post,
 };
-use eventix_state::{CollectionSettings, SyncerType};
 
 // --- Helpers specific to create-todo tests ---
 

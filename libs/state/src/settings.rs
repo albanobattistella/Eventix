@@ -292,6 +292,14 @@ impl SyncerType {
         matches!(self, Self::VDirSyncer { .. } | Self::O365 { .. })
     }
 
+    /// Returns whether this syncer is configured as read-only.
+    pub fn is_read_only(&self) -> bool {
+        match self {
+            Self::VDirSyncer { read_only, .. } | Self::O365 { read_only, .. } => *read_only,
+            Self::FileSystem { .. } => false,
+        }
+    }
+
     /// Returns the local filesystem path where calendar data for this syncer is stored.
     pub fn path(&self, xdg: &BaseDirectories, name: &str) -> PathBuf {
         match self {
