@@ -107,7 +107,7 @@
         <span>{{ "Add Collection"|t(locale) }}</span>
     </a>
 
-    {% if !collections.is_empty() %}
+    {% if !collection_select.options().is_empty() %}
         <div class="ev_add_cal_wrapper">
             <div class="ev_add_cal">
                 <span>{{ "Calendar Name"|t(locale) }}:</span>

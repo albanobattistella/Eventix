@@ -26,6 +26,10 @@ impl<T: Display> ComboOption<T> {
             value,
         }
     }
+
+    pub fn value(&self) -> &T {
+        &self.value
+    }
 }
 
 #[derive(Template)]
@@ -56,6 +60,10 @@ impl<T: Display + Eq + PartialEq + Named + IntoEnumIterator> ComboboxTemplate<T>
 }
 
 impl<T: Display + Eq + PartialEq> ComboboxTemplate<T> {
+    pub fn options(&self) -> &[ComboOption<T>] {
+        &self.options
+    }
+
     pub fn new_with_options<N: ToString>(
         locale: Arc<dyn Locale + Send + Sync>,
         name: N,
