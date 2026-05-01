@@ -643,6 +643,22 @@ impl CalDateTime {
         }
     }
 
+    /// Returns the wallclock duration from `start` until `self`
+    ///
+    /// If the instances are not of the same type, `None` is returned.
+    pub fn wallclock_duration_since(&self, start: &CalDateTime) -> Option<Duration> {
+        match (start, self) {
+            (CalDateTime::Utc(start), CalDateTime::Utc(end)) => Some(*end - *start),
+            (CalDateTime::Floating(start), CalDateTime::Floating(end)) => Some(*end - *start),
+            (CalDateTime::Timezone(start, start_tz), CalDateTime::Timezone(end, end_tz))
+                if start_tz == end_tz =>
+            {
+                Some(*end - *start)
+            }
+            _ => None,
+        }
+    }
+
     /// Attempts to interpret the given date in the given timezone and returns a `Self::Utc`
     /// instance for that date.
     fn from_local_as_utc(local: NaiveDateTime, tz: &Tz) -> Result<Self, ParseError> {

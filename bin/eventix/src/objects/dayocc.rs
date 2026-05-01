@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use chrono::{NaiveDate, Timelike};
+use chrono::{NaiveDate, NaiveTime, Timelike};
 use chrono_tz::Tz;
 use eventix_ical::col::Occurrence;
 use eventix_ical::objects::{CalAttendee, CalPartStat, EventLike};
@@ -225,25 +225,30 @@ impl<'a> DayOccurrence<'a> {
     }
 
     pub fn minute_duration(&self, date: NaiveDate) -> u64 {
+        let Some(start) = self.inner.occurrence_start() else {
+            return 0;
+        };
+        let end = self.inner.occurrence_end().unwrap_or(start);
+
+        let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
         if self.inner.occurrence_starts_on(date) {
-            match self.inner.time_duration() {
-                Some(d) => {
-                    let start = self.inner.occurrence_start().unwrap();
-                    let left = if start.minute() == 0 {
-                        (24 - start.hour()) * 60
-                    } else {
-                        (23 - start.hour()) * 60 + (60 - start.minute())
-                    };
-                    (left as i64).min(d.num_minutes()) as u64
-                }
-                None => 0,
-            }
+            let start_time = start.time();
+            // if the occurrence ends on this day, but end-time is midnight, we use 23:59:59
+            let end_time = if self.inner.occurrence_ends_on(date) && end.time() != midnight {
+                end.time()
+            } else {
+                NaiveTime::from_hms_opt(23, 59, 59).unwrap()
+            };
+            (end_time - start_time).num_minutes() as u64
         } else {
-            let end = self.inner.occurrence_end().unwrap();
-            let mins = end.hour() as u64 * 60 + end.minute() as u64;
-            // An end of 00:00 on the next day is stored as midnight but logically means
-            // "end of this day" — render it as a full 1440-minute block.
-            if mins == 0 { 1440 } else { mins }
+            // we do not call this if the event is running the full day on `date`
+            assert!(self.inner.occurrence_ends_on(date));
+            let end_time = end.time();
+            if end_time == midnight {
+                24 * 60
+            } else {
+                (end_time - midnight).num_minutes() as u64
+            }
         }
     }
 }
@@ -252,5 +257,76 @@ impl<'a> Deref for DayOccurrence<'a> {
     type Target = Occurrence<'a>;
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{NaiveDate, TimeZone};
+    use chrono_tz::Tz;
+    use eventix_ical::objects::{CalComponent, CalEvent, ResolvedDateTime};
+    use std::sync::Arc;
+
+    fn dir() -> Arc<String> {
+        Arc::new("test-dir".to_string())
+    }
+
+    fn timed_occ<'a>(
+        start: chrono::DateTime<Tz>,
+        end: chrono::DateTime<Tz>,
+        display_tz: Tz,
+    ) -> DayOccurrence<'a> {
+        static COMP: Lazy<CalComponent> = Lazy::new(|| {
+            let ev = CalEvent::new("uid");
+            CalComponent::Event(ev)
+        });
+        let occ = Occurrence::new_in_tz(
+            dir(),
+            &COMP,
+            Some(ResolvedDateTime::from(start.fixed_offset())),
+            Some(ResolvedDateTime::from(end.fixed_offset())),
+            false,
+            display_tz,
+        );
+        DayOccurrence::new(&occ, None, false, false)
+    }
+
+    #[test]
+    fn minute_duration_dst_gap() {
+        let tz: Tz = "Europe/Berlin".parse().unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 3, 30).unwrap();
+
+        // 01:30 to 03:30. Gap is 02:00 -> 03:00.
+        let start = tz.with_ymd_and_hms(2025, 3, 30, 1, 30, 0).unwrap();
+        let end = tz.with_ymd_and_hms(2025, 3, 30, 3, 30, 0).unwrap();
+        let docc = timed_occ(start, end, tz);
+        assert_eq!(docc.minute_duration(date), 2 * 60);
+    }
+
+    #[test]
+    fn minute_duration_dst_fold() {
+        let tz: Tz = "Europe/Berlin".parse().unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 10, 26).unwrap();
+
+        // 01:30 to 03:30. Fold is 03:00 -> 02:00.
+        let start = tz.with_ymd_and_hms(2025, 10, 26, 1, 30, 0).unwrap();
+        let end = tz.with_ymd_and_hms(2025, 10, 26, 3, 30, 0).unwrap();
+        let docc = timed_occ(start, end, tz);
+        assert_eq!(docc.minute_duration(date), 2 * 60);
+    }
+
+    #[test]
+    fn minute_duration_multi_day_dst_gap() {
+        let tz: Tz = "Europe/Berlin".parse().unwrap();
+        let mar29 = NaiveDate::from_ymd_opt(2025, 3, 29).unwrap();
+        let mar30 = NaiveDate::from_ymd_opt(2025, 3, 30).unwrap();
+
+        let start = tz.with_ymd_and_hms(2025, 3, 29, 22, 0, 0).unwrap();
+        let end = tz.with_ymd_and_hms(2025, 3, 30, 4, 0, 0).unwrap();
+        let docc = timed_occ(start, end, tz);
+
+        assert_eq!(docc.minute_duration(mar29), 2 * 60 - 1); // until end of day
+        assert_eq!(docc.minute_duration(mar30), 4 * 60);
     }
 }

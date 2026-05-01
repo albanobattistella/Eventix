@@ -8,7 +8,7 @@ use axum::{
     extract::{Query, State},
     response::{Html, IntoResponse},
 };
-use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone};
+use chrono::{Datelike, Duration, Local, MappedLocalTime, NaiveDate, TimeZone};
 use eventix_ical::objects::{CalCompType, EventLike};
 use eventix_locale::{DateFlags, Locale};
 use eventix_state::EventixState;
@@ -27,6 +27,14 @@ struct Day {
     allday_ids: Vec<String>,
     occurrences: Vec<String>,
     occ_ids: Vec<String>,
+    gaps: Vec<DSTZone>,
+    folds: Vec<DSTZone>,
+}
+
+#[derive(serde::Serialize)]
+struct DSTZone {
+    top: u32,
+    height: u32,
 }
 
 #[derive(Default, Debug, Deserialize)]
@@ -190,6 +198,29 @@ pub async fn content(
 
     let mut days = Vec::new();
     while date < end {
+        let mut gaps = Vec::new();
+        let mut folds = Vec::new();
+        for hour in 0..24 {
+            for minute in [0, 30] {
+                let naive = date.and_hms_opt(hour, minute, 0).unwrap();
+                match timezone.from_local_datetime(&naive) {
+                    MappedLocalTime::None => {
+                        gaps.push(DSTZone {
+                            top: hour * 60 + minute,
+                            height: 30,
+                        });
+                    }
+                    MappedLocalTime::Ambiguous(_, _) => {
+                        folds.push(DSTZone {
+                            top: hour * 60 + minute,
+                            height: 30,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         let mut day_occs =
             DayOccurrence::occurrences_on(&ev_occs, settings, pers_alarms, date, &timezone);
 
@@ -236,6 +267,8 @@ pub async fn content(
             allday_ids,
             occurrences: occ_rendered,
             occ_ids,
+            gaps,
+            folds,
         });
 
         date += Duration::days(1);

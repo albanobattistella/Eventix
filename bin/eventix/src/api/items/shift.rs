@@ -60,7 +60,7 @@ async fn run_shift(
         }
 
         let tz = locale.timezone();
-        let duration = c.time_duration().unwrap();
+        let duration = c.wallclock_duration().unwrap();
         let old_start = ctx.date(c.start().unwrap()).start_in(tz);
         let new_date = req.date.date().ok_or_else(|| anyhow!("Invalid date"))?;
 

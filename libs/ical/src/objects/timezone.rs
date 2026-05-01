@@ -600,9 +600,10 @@ fn detect_recent_transitions(tz: Tz) -> Option<Vec<TransitionInfo>> {
         let next_offset = next.with_timezone(&tz).offset().fix().local_minus_utc();
         if next_offset != current_offset {
             let transition = find_transition(tz, current, next)?;
-            let before = (transition - Duration::minutes(1)).with_timezone(&tz);
+            let before = (transition - Duration::seconds(1)).with_timezone(&tz);
             let after = transition.with_timezone(&tz);
-            let local = after.naive_local();
+            let local = transition.naive_utc()
+                + Duration::seconds(i64::from(before.offset().fix().local_minus_utc()));
             let day = local.date();
             let nth_from_start = ((day.day() - 1) / 7 + 1) as u8;
             let nth_from_end =
@@ -644,7 +645,7 @@ fn find_transition(
     mut end: chrono::DateTime<Utc>,
 ) -> Option<chrono::DateTime<Utc>> {
     let start_offset = start.with_timezone(&tz).offset().fix().local_minus_utc();
-    while (end - start) > Duration::minutes(1) {
+    while (end - start) > Duration::seconds(1) {
         let mid = start + Duration::seconds((end - start).num_seconds() / 2);
         let mid_offset = mid.with_timezone(&tz).offset().fix().local_minus_utc();
         if mid_offset == start_offset {

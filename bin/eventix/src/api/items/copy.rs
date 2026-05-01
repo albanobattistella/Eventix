@@ -70,7 +70,7 @@ async fn run_copy(
         }
 
         let duration = comp
-            .time_duration()
+            .wallclock_duration()
             .ok_or_else(|| anyhow!("Event has no duration"))?;
         let ctx = file.calendar().date_context();
         let old_start = comp

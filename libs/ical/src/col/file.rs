@@ -400,7 +400,7 @@ impl CalFile {
             for (rid, rid_alarms) in alarm_overwrites {
                 // construct a new occurrence
                 let rid_tz = rid.as_start_with_resolver(&start.timezone(), resolver);
-                let fend = first.time_duration().map(|d| rid_tz + d);
+                let fend = first.wallclock_duration().map(|d| rid_tz + d);
                 let mut rid_occ = Occurrence::new_in_tz(
                     self.dir.clone(),
                     first,
@@ -680,7 +680,7 @@ impl CalFile {
 
         // set sensible default for the end/due date
         if let (Some(chrono_dur), Some(CalDate::DateTime(CalDateTime::Timezone(naive, tzid)))) =
-            (base.time_duration(), comp.start())
+            (base.wallclock_duration(), comp.start())
         {
             let end = CalDate::DateTime(CalDateTime::Timezone(*naive + chrono_dur, tzid.clone()));
             match &mut comp {
@@ -1997,6 +1997,91 @@ mod tests {
 
         let occ = file.occurrence_by_id("exc", Some(&rid), tz).unwrap();
         assert!(occ.is_excluded());
+    }
+
+    #[test]
+    fn occurrence_end_correct_across_spring_forward() {
+        let ics = "BEGIN:VCALENDAR\n\
+BEGIN:VEVENT\n\
+DTEND;TZID=Europe/Berlin:20260329T180000\n\
+UID:my-uid\n\
+DTSTART;TZID=Europe/Berlin:20260328T010000\n\
+SUMMARY:test1\n\
+END:VEVENT\n\
+END:VCALENDAR";
+
+        let cal = ics.parse().unwrap();
+        let file = CalFile::new_simple(cal);
+        let tz = &chrono_tz::Europe::Berlin;
+
+        let occ = file.occurrence_by_id("my-uid", None, tz).unwrap();
+        let end = chrono_tz::Europe::Berlin
+            .with_ymd_and_hms(2026, 3, 29, 18, 0, 0)
+            .unwrap();
+        assert_eq!(occ.occurrence_end(), Some(end));
+        assert_eq!(occ.wallclock_duration(), Some(Duration::hours(23 + 18)));
+    }
+
+    #[test]
+    fn occurrence_end_with_duration_correct_across_spring_forward() {
+        let ics = "BEGIN:VCALENDAR\n\
+BEGIN:VEVENT\n\
+DURATION:PT2H\n\
+UID:my-uid\n\
+DTSTART;TZID=Europe/Berlin:20260328T010000\n\
+SUMMARY:test1\n\
+END:VEVENT\n\
+END:VCALENDAR";
+
+        let cal = ics.parse().unwrap();
+        let file = CalFile::new_simple(cal);
+        let tz = &chrono_tz::Europe::Berlin;
+
+        let occ = file.occurrence_by_id("my-uid", None, tz).unwrap();
+        let end = chrono_tz::Europe::Berlin
+            .with_ymd_and_hms(2026, 3, 28, 3, 0, 0)
+            .unwrap();
+        assert_eq!(occ.occurrence_end(), Some(end));
+        assert_eq!(occ.wallclock_duration(), Some(Duration::hours(2)));
+    }
+
+    #[test]
+    fn recurring_occurrence_keeps_wall_clock_dtend_across_spring_forward() {
+        let mut cal = Calendar::default();
+        cal.add_component(CalComponent::Event(
+            EventBuilder::new("dst-span")
+                .start(CalDate::DateTime(CalDateTime::Timezone(
+                    NaiveDate::from_ymd_opt(2026, 3, 28)
+                        .unwrap()
+                        .and_hms_opt(1, 0, 0)
+                        .unwrap(),
+                    "Europe/Berlin".to_string(),
+                )))
+                .end(CalDate::DateTime(CalDateTime::Timezone(
+                    NaiveDate::from_ymd_opt(2026, 3, 29)
+                        .unwrap()
+                        .and_hms_opt(18, 0, 0)
+                        .unwrap(),
+                    "Europe/Berlin".to_string(),
+                )))
+                .rrule("FREQ=DAILY;COUNT=2".parse().unwrap())
+                .done(),
+        ));
+        let file = CalFile::new_simple(cal);
+
+        let occs: Vec<_> = file
+            .occurrences_between(new_date(2026, 3, 28), new_date(2026, 3, 31), |_| true)
+            .collect();
+
+        assert_eq!(occs.len(), 2);
+        assert_eq!(
+            occs[0].occurrence_end(),
+            Some(new_datetime(2026, 3, 29, 18, 0, 0))
+        );
+        assert_eq!(
+            occs[1].occurrence_end(),
+            Some(new_datetime(2026, 3, 30, 18, 0, 0))
+        );
     }
 
     #[test]
