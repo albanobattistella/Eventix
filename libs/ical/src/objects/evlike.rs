@@ -87,11 +87,11 @@ pub trait EventLike: PropertyProducer {
     /// See <https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.5>.
     fn duration(&self) -> Option<&CalDuration>;
 
-    /// Calculates the duration of this calendar object.
+    /// Calculates the wall-clock duration of this calendar object.
     ///
     /// The calculation is based on either [`Self::duration`], if present, or [`Self::start`] and
     /// [`Self::end_or_due`]. In the latter case, it yields `None` if either is `None`.
-    fn time_duration(&self) -> Option<Duration> {
+    fn wallclock_duration(&self) -> Option<Duration> {
         if let Some(dur) = self.duration() {
             return Some(**dur);
         }
@@ -325,18 +325,18 @@ mod tests {
     }
 
     #[test]
-    fn time_duration_with_duration_and_is_all_day() {
+    fn wallclock_duration_with_duration_and_is_all_day() {
         let mut comp = base_component();
 
         // set DURATION via parse_prop
         let mut lr = LineReader::new("".as_bytes());
         let prop = Property::new("DURATION", vec![], "PT2H");
         comp.parse_prop(&mut lr, prop).unwrap();
-        assert_eq!(comp.time_duration().unwrap(), Duration::hours(2));
+        assert_eq!(comp.wallclock_duration().unwrap(), Duration::hours(2));
 
         // no duration and no start -> None
         let comp2 = EventLikeComponent::new("u2", CalCompType::Event);
-        assert!(comp2.time_duration().is_none());
+        assert!(comp2.wallclock_duration().is_none());
 
         // set DTSTART as DATE to mark all-day
         let mut comp3 = EventLikeComponent::new("u3", CalCompType::Event);

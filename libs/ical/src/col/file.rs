@@ -400,7 +400,7 @@ impl CalFile {
             for (rid, rid_alarms) in alarm_overwrites {
                 // construct a new occurrence
                 let rid_tz = rid.as_start_with_resolver(&start.timezone(), resolver);
-                let fend = first.time_duration().map(|d| rid_tz + d);
+                let fend = first.wallclock_duration().map(|d| rid_tz + d);
                 let mut rid_occ = Occurrence::new_in_tz(
                     self.dir.clone(),
                     first,
@@ -680,7 +680,7 @@ impl CalFile {
 
         // set sensible default for the end/due date
         if let (Some(chrono_dur), Some(CalDate::DateTime(CalDateTime::Timezone(naive, tzid)))) =
-            (base.time_duration(), comp.start())
+            (base.wallclock_duration(), comp.start())
         {
             let end = CalDate::DateTime(CalDateTime::Timezone(*naive + chrono_dur, tzid.clone()));
             match &mut comp {
@@ -2019,7 +2019,7 @@ END:VCALENDAR";
             .with_ymd_and_hms(2026, 3, 29, 18, 0, 0)
             .unwrap();
         assert_eq!(occ.occurrence_end(), Some(end));
-        assert_eq!(occ.time_duration(), Some(Duration::hours(23 + 18)));
+        assert_eq!(occ.wallclock_duration(), Some(Duration::hours(23 + 18)));
     }
 
     #[test]
@@ -2042,7 +2042,7 @@ END:VCALENDAR";
             .with_ymd_and_hms(2026, 3, 28, 3, 0, 0)
             .unwrap();
         assert_eq!(occ.occurrence_end(), Some(end));
-        assert_eq!(occ.time_duration(), Some(Duration::hours(2)));
+        assert_eq!(occ.wallclock_duration(), Some(Duration::hours(2)));
     }
 
     #[test]

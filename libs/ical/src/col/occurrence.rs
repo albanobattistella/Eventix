@@ -295,7 +295,7 @@ impl<'c> Occurrence<'c> {
     pub fn resolved_occurrence_end(&self) -> Option<ResolvedDateTime> {
         match self.end {
             Some(end) => Some(end),
-            None => self.time_duration().map(|d| {
+            None => self.wallclock_duration().map(|d| {
                 let start = self.start.unwrap();
                 match self.start() {
                     Some(CalDate::DateTime(CalDateTime::Timezone(_, tzid))) => tzid
@@ -550,7 +550,7 @@ impl EventLike for Occurrence<'_> {
         occ_or_base_opt!(self, priority)
     }
 
-    fn time_duration(&self) -> Option<Duration> {
+    fn wallclock_duration(&self) -> Option<Duration> {
         if let Some(duration) = self.duration() {
             return Some(**duration);
         }
@@ -565,7 +565,7 @@ impl EventLike for Occurrence<'_> {
                 // if both are overwritten, use them for the duration
                 (_, _, Some(ostart), Some(oend)) => (ostart.clone(), Some(oend.clone())),
                 // if just one or none is overwritten, it's the duration of the base component
-                (Some(_), Some(_), _, _) => return self.base.time_duration(),
+                (Some(_), Some(_), _, _) => return self.base.wallclock_duration(),
                 // otherwise, we simply don't know the duration
                 _ => return None,
             },
@@ -1016,7 +1016,7 @@ mod tests {
         ));
     }
 
-    /// Verifies `occurrence_end` falls back to start + time_duration when `end` is None.
+    /// Verifies `occurrence_end` falls back to start + wallclock_duration when `end` is None.
     #[test]
     fn occurrence_end_via_duration() {
         let start_dt = utc(2024, 12, 1, 9, 0, 0);
@@ -1284,9 +1284,9 @@ mod tests {
         assert!(occ.to_props().is_empty());
     }
 
-    /// Verifies all zero-coverage branches in the `time_duration` override on `Occurrence`.
+    /// Verifies all zero-coverage branches in the `wallclock_duration` override on `Occurrence`.
     #[test]
-    fn time_duration_overwrite_branches() {
+    fn wallclock_duration_overwrite_branches() {
         let start = utc(2025, 6, 1, 9, 0, 0);
         let end = utc(2025, 6, 1, 11, 0, 0); // 2 hours
 
@@ -1300,7 +1300,7 @@ mod tests {
         let comp_dur = CalComponent::Event(ev_dur);
         let mut occ_dur = Occurrence::new(dir(), &comp_dur, Some(start), None, false);
         // Attach an overwrite that also has a duration — the overwrite's duration wins via
-        // occ_or_base_opt! inside duration(), which then returns early in time_duration().
+        // occ_or_base_opt! inside duration(), which then returns early in wallclock_duration().
         let mut ev_ow_dur = CalEvent::new("ev-dur");
         let mut lr2 = LineReader::new("".as_bytes());
         ev_ow_dur
@@ -1308,7 +1308,7 @@ mod tests {
             .unwrap();
         let comp_ow_dur = CalComponent::Event(ev_ow_dur);
         occ_dur.set_overwrite(&comp_ow_dur, &Tz::UTC, &resolver());
-        assert_eq!(occ_dur.time_duration(), Some(Duration::hours(5)));
+        assert_eq!(occ_dur.wallclock_duration(), Some(Duration::hours(5)));
 
         // Branch: overwrite has both start and end (overwrite-derived duration)
         let ostart = utc(2025, 6, 2, 8, 0, 0);
@@ -1325,10 +1325,10 @@ mod tests {
 
         let mut occ_both = Occurrence::new(dir(), &comp_base, Some(ostart), Some(oend), false);
         occ_both.set_overwrite(&comp_ow, &Tz::UTC, &resolver());
-        assert_eq!(occ_both.time_duration(), Some(Duration::hours(2)));
+        assert_eq!(occ_both.wallclock_duration(), Some(Duration::hours(2)));
 
         // Branch: base has both start and end, overwrite has neither fully overridden
-        // → falls back to base.time_duration()
+        // → falls back to base.wallclock_duration()
         let mut ev_ow_partial = CalEvent::new("ev-both");
         ev_ow_partial.set_start(Some(ostart.into())); // only start overwritten, no end
         let comp_ow_partial = CalComponent::Event(ev_ow_partial);
@@ -1336,7 +1336,7 @@ mod tests {
         let mut occ_partial = Occurrence::new(dir(), &comp_base, Some(ostart), None, false);
         occ_partial.set_overwrite(&comp_ow_partial, &Tz::UTC, &resolver());
         // base has start + end → 2 hours
-        assert_eq!(occ_partial.time_duration(), Some(Duration::hours(2)));
+        assert_eq!(occ_partial.wallclock_duration(), Some(Duration::hours(2)));
 
         // Branch: overwrite has no start/end and base has no start/end → None.
         // We give the occurrence a start so that set_overwrite can call tz().unwrap() safely.
@@ -1347,7 +1347,7 @@ mod tests {
 
         let mut occ_no_start = Occurrence::new(dir(), &comp_no_start, Some(start), None, false);
         occ_no_start.set_overwrite(&comp_ow_no_start, &Tz::UTC, &resolver());
-        assert_eq!(occ_no_start.time_duration(), None);
+        assert_eq!(occ_no_start.wallclock_duration(), None);
 
         // Branch: no overwrite, all-day base where start is not CalDate::Date
         // (the normalization branch in time_duration that converts DateTime start to Date)
@@ -1368,7 +1368,10 @@ mod tests {
         let occ_allday = Occurrence::new(dir(), &comp_allday, Some(start_allday), None, false);
         // The end is stored as DATE(2025-06-04, Exclusive), which as_end_with_tz resolves to
         // 2025-06-03T23:59:59. Subtracting the start (00:00:00) gives 86399 seconds.
-        assert_eq!(occ_allday.time_duration(), Some(Duration::seconds(86399)));
+        assert_eq!(
+            occ_allday.wallclock_duration(),
+            Some(Duration::seconds(86399))
+        );
     }
 
     /// Verifies `AlarmOccurrence::new`, `occurrence`, `alarm`, and `alarm_date`.

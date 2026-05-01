@@ -799,7 +799,7 @@ impl CalComponent {
 
             let dates = rrule.dates_between_with_until(
                 dtstart,
-                self.time_duration(),
+                self.wallclock_duration(),
                 start,
                 end,
                 until_override,
