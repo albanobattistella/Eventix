@@ -37,7 +37,8 @@
                 "mkdir -p /app/build-artifacts",
                 "cp target/release/eventix /app/build-artifacts/",
                 "cp target/release/eventix-app /app/build-artifacts/",
-                "cp target/release/eventix-import /app/build-artifacts/"
+                "cp target/release/eventix-import /app/build-artifacts/",
+                "cp target/release/eventix-keyring /app/build-artifacts/"
             ],
             "sources": [
                 {
@@ -54,6 +55,7 @@
                 "install -Dm755 /app/build-artifacts/eventix -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-app -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-import -t /app/bin/",
+                "install -Dm755 /app/build-artifacts/eventix-keyring -t /app/bin/",
                 "rm -rf /app/build-artifacts",
                 "install -Dm644 com.github.hrniels.Eventix.desktop -t /app/share/applications/",
                 "install -Dm644 com.github.hrniels.Eventix-Import.desktop -t /app/share/applications/",

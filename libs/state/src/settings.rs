@@ -234,9 +234,9 @@ impl SyncTimeSpan {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum PasswordSource {
-    /// Looks up the secret from the desktop keyring via Secret Service.
+    /// Looks up the secret from the desktop keyring via eventix-keyring.
     SecretService {
-        /// Attributes used to search the keyring item.
+        /// Key/Value pairs used to search the keyring item.
         attributes: BTreeMap<String, String>,
     },
     /// Runs an custom command to retrieve the password.
@@ -244,6 +244,23 @@ pub enum PasswordSource {
         /// Shell command and arguments used to retrieve the password.
         command: Vec<String>,
     },
+}
+
+impl PasswordSource {
+    /// Returns the command to execute to retrieve the password.
+    pub fn build_command(&self) -> Vec<String> {
+        match self {
+            Self::Command { command } => command.clone(),
+            Self::SecretService { attributes } => {
+                let mut cmd = vec!["eventix-keyring".to_string()];
+                if let Some((k, v)) = attributes.first_key_value() {
+                    cmd.push(k.clone());
+                    cmd.push(v.clone());
+                }
+                cmd
+            }
+        }
+    }
 }
 
 /// The backend used to synchronise and provide calendar data for a collection.

@@ -44,7 +44,8 @@ def dev_env():
     vdirsyncer_bin = os.path.abspath("run/venv/bin")
     if not os.path.isfile(vdirsyncer_bin + "/vdirsyncer"):
         sys.exit("Please install vdirsyncer first via ./b vdirsyncer")
-    env["PATH"] = os.pathsep.join([davmail_bin, vdirsyncer_bin, env.get("PATH", "")])
+    eventix_bin = os.path.abspath("target/debug")
+    env["PATH"] = os.pathsep.join([davmail_bin, vdirsyncer_bin, eventix_bin, env.get("PATH", "")])
     # use a project-local directory for data and config
     env["XDG_DATA_HOME"] = str(run_dir.absolute())
     env["XDG_CONFIG_HOME"] = str(run_dir.absolute())
