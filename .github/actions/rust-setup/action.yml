@@ -25,7 +25,9 @@ runs:
           libwebkitgtk-6.0-dev \
           libgdk-pixbuf2.0-dev \
           elfutils \
-          librsvg2-common
+          librsvg2-common \
+          libdbus-1-dev \
+          pkg-config
 
     - name: Install Rust (stable)
       uses: dtolnay/rust-toolchain@stable
