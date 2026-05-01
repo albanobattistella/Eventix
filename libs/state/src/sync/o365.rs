@@ -242,6 +242,22 @@ impl O365 {
         }
     }
 
+    async fn run_with_davmail<F>(&mut self, future: F) -> anyhow::Result<SyncColResult>
+    where
+        F: FnOnce(&mut VDirSyncer) -> SyncFuture<'_>,
+    {
+        let id = self.col_id.clone();
+        let auth_url = self.auth_url.clone();
+        let props_path = self.props_path.clone();
+        let log = self.log.clone();
+        let runner = self.runner.clone();
+        let future = future(&mut self.vdirsyncer);
+
+        runner
+            .run_with_davmail(&props_path, &id, auth_url.as_ref(), log, future)
+            .await
+    }
+
     /// Generates a DavMail `.properties` file for the collection identified by `name`.
     ///
     /// Writes all required DavMail configuration keys, including the CalDAV port, the
@@ -340,61 +356,25 @@ impl O365 {
 #[async_trait]
 impl Syncer for O365 {
     async fn discover(&mut self) -> anyhow::Result<SyncColResult> {
-        let id = self.col_id.clone();
-        let auth_url = self.auth_url.clone();
-        let props_path = self.props_path.clone();
-        let log = self.log.clone();
-        // Clone the runner Arc so the borrow of `self` ends before we need `self` in the future.
-        let runner = self.runner.clone();
-
-        let res = runner
-            .run_with_davmail(
-                &props_path,
-                &id,
-                auth_url.as_ref(),
-                log,
-                Box::pin(async { self.vdirsyncer.discover().await }),
-            )
+        let res = self
+            .run_with_davmail(|vdir| Box::pin(async { vdir.discover().await }))
             .await;
 
         self.remember_token(res).await
     }
 
     async fn sync_cal(&mut self, cal_id: &String) -> anyhow::Result<SyncColResult> {
-        let id = self.col_id.clone();
-        let auth_url = self.auth_url.clone();
-        let props_path = self.props_path.clone();
-        let log = self.log.clone();
-        let runner = self.runner.clone();
-
-        let res = runner
-            .run_with_davmail(
-                &props_path,
-                &id,
-                auth_url.as_ref(),
-                log,
-                Box::pin(async { self.vdirsyncer.sync_cal(cal_id).await }),
-            )
+        let cal_id = cal_id.clone();
+        let res = self
+            .run_with_davmail(move |vdir| Box::pin(async move { vdir.sync_cal(&cal_id).await }))
             .await;
 
         self.remember_token(res).await
     }
 
     async fn sync(&mut self) -> anyhow::Result<SyncColResult> {
-        let id = self.col_id.clone();
-        let auth_url = self.auth_url.clone();
-        let props_path = self.props_path.clone();
-        let log = self.log.clone();
-        let runner = self.runner.clone();
-
-        let res = runner
-            .run_with_davmail(
-                &props_path,
-                &id,
-                auth_url.as_ref(),
-                log,
-                Box::pin(async { self.vdirsyncer.sync().await }),
-            )
+        let res = self
+            .run_with_davmail(|vdir| Box::pin(async { vdir.sync().await }))
             .await;
 
         self.remember_token(res).await
