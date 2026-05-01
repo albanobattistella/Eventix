@@ -27,6 +27,17 @@ function escapeHTML(value) {
     return $("<div>").text(value).html();
 }
 
+function renderCalTag(cal_id) {
+    const calName = (window.calendarNames && window.calendarNames[cal_id]) || "unknown";
+    return (
+        '<span class="ev_error_entry_cal ev_cal_src_' +
+        escapeHTML(cal_id) +
+        '">' +
+        escapeHTML(calName) +
+        "</span>"
+    );
+}
+
 function renderAJAXErrors() {
     const list = $("#error-list");
     if (!list.length) return;
@@ -42,12 +53,19 @@ function renderAJAXErrors() {
 
     const items = ajaxErrors
         .map(function (entry) {
+            let tags = "";
+            let cal_ids = entry.cal_ids;
+            if (!cal_ids && entry.col_id && window.collectionCalendars)
+                cal_ids = window.collectionCalendars[entry.col_id];
+
+            if (cal_ids && cal_ids.length > 0) tags = cal_ids.map(renderCalTag).join("");
             return (
                 '<div class="ev_error_entry">' +
                 '<div class="ev_error_entry_time">' +
                 escapeHTML(entry.time) +
                 "</div>" +
                 '<div class="ev_error_entry_message">' +
+                tags +
                 escapeHTML(entry.message) +
                 "</div>" +
                 "</div>"
@@ -92,11 +110,34 @@ function toggleErrorList() {
     else openErrorList();
 }
 
-function notifyAJAXError(message) {
+function notifyAJAXError(message, col_id) {
+    if (message === null) {
+        if (col_id) {
+            ajaxErrors = ajaxErrors.filter(function (e) {
+                return e.col_id !== col_id;
+            });
+        }
+        renderAJAXErrors();
+        return;
+    }
+
     const msg = message || errorListLabel("unknownLabel", "Unknown error");
+
+    // replace the existing one
+    if (col_id) {
+        const existingIdx = ajaxErrors.findIndex(function (e) {
+            return e.col_id === col_id;
+        });
+        if (existingIdx !== -1) {
+            ajaxErrors.splice(existingIdx, 1);
+        }
+    }
+
     ajaxErrors.unshift({
         time: new Date().toLocaleTimeString(),
         message: msg,
+        col_id: col_id,
+        cal_ids: null,
     });
     ajaxErrors = ajaxErrors.slice(0, MAX_AJAX_ERRORS);
     renderAJAXErrors();

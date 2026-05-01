@@ -38,6 +38,17 @@
     <!-- prettier-ignore-start -->
     <script type="text/javascript">
         $(function () {
+            if (!window.calendarNames) window.calendarNames = {};
+            window.calendarNames["{{ cal.id }}"] = "{{ cal.name }}";
+
+            if (!window.collectionCalendars) window.collectionCalendars = {};
+            if (!window.collectionCalendars["{{ cal.col_id }}"]) {
+                window.collectionCalendars["{{ cal.col_id }}"] = [];
+            }
+            if (!window.collectionCalendars["{{ cal.col_id }}"].includes("{{ cal.id }}")) {
+                window.collectionCalendars["{{ cal.col_id }}"].push("{{ cal.id }}");
+            }
+
             {% if !cal.enabled %}
             $("#calendar_enabled_{{ cal.id }}").hover(
                 // use explicit add/remove calls for in/out instead of toggle here, because the

@@ -45,11 +45,23 @@ impl Settings {
 
     /// Returns an iterator over all enabled calendars across all collections.
     ///
+    /// Each item is a tuple of `(calendar_id, &CalendarSettings, collection_id)`.
+    pub fn calendars_with_col(
+        &self,
+    ) -> impl Iterator<Item = (&String, &CalendarSettings, &String)> {
+        self.collections.iter().flat_map(|(col_id, col)| {
+            col.calendars
+                .iter()
+                .filter(|(_, c)| c.enabled())
+                .map(move |(cal_id, c)| (cal_id, c, col_id))
+        })
+    }
+
+    /// Returns an iterator over all enabled calendars across all collections.
+    ///
     /// Each item is a tuple of `(calendar_id, &CalendarSettings)`.
     pub fn calendars(&self) -> impl Iterator<Item = (&String, &CalendarSettings)> {
-        self.collections
-            .values()
-            .flat_map(|col| col.calendars.iter().filter(|(_, c)| c.enabled()))
+        self.calendars_with_col().map(|(id, c, _)| (id, c))
     }
 
     /// Returns the collection and calendar settings for the enabled calendar with the given `id`.

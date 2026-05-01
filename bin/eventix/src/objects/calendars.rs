@@ -6,6 +6,7 @@ use eventix_state::{CalendarSettings, State};
 
 pub struct Calendar {
     pub id: String,
+    pub col_id: String,
     pub name: String,
     pub enabled: bool,
     pub sync_error: bool,
@@ -23,11 +24,12 @@ impl Calendars {
     {
         let mut calendars = state
             .settings()
-            .calendars()
-            .filter_map(|(id, settings)| {
+            .calendars_with_col()
+            .filter_map(|(id, settings, col_id)| {
                 if filter(id, settings) {
                     Some(Calendar {
                         id: id.clone(),
+                        col_id: col_id.clone(),
                         name: settings.name().clone(),
                         enabled: !state.misc().calendar_disabled(id),
                         sync_error: state.misc().has_calendar_error(id),
