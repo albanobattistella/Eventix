@@ -11,14 +11,15 @@
     "finish-args": [
         "--share=network",
         "--share=ipc",
+        "--device=dri",
         "--socket=fallback-x11",
         "--socket=x11",
-        "--device=dri",
         "--socket=session-bus",
         "--filesystem=xdg-run/pipewire-0",
         "--talk-name=org.kde.StatusNotifierWatcher",
         "--talk-name=org.freedesktop.Notifications",
-        "--talk-name=org.freedesktop.portal.Desktop"
+        "--talk-name=org.freedesktop.portal.Desktop",
+        "--talk-name=org.freedesktop.secrets"
     ],
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
