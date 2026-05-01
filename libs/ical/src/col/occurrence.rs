@@ -580,8 +580,14 @@ impl EventLike for Occurrence<'_> {
         };
 
         let ctx = DateContext::system();
-        end.map(|end| {
-            ctx.date(&end).resolved_end(&Tz::UTC) - ctx.date(&start).resolved_start(&Tz::UTC)
+        end.map(|end| match (&start, &end) {
+            (CalDate::DateTime(start_dt), CalDate::DateTime(end_dt)) => end_dt
+                .wallclock_duration_since(start_dt)
+                .unwrap_or_else(|| {
+                    ctx.date(&end).resolved_end(&Tz::UTC)
+                        - ctx.date(&start).resolved_start(&Tz::UTC)
+                }),
+            _ => ctx.date(&end).resolved_end(&Tz::UTC) - ctx.date(&start).resolved_start(&Tz::UTC),
         })
     }
 }

@@ -106,8 +106,13 @@ pub trait EventLike: PropertyProducer {
         };
 
         let ctx = DateContext::system();
-        self.end_or_due().map(|end| {
-            ctx.date(end).resolved_end(&Tz::UTC) - ctx.date(&start).resolved_start(&Tz::UTC)
+        self.end_or_due().map(|end| match (&start, end) {
+            (CalDate::DateTime(start_dt), CalDate::DateTime(end_dt)) => end_dt
+                .wallclock_duration_since(start_dt)
+                .unwrap_or_else(|| {
+                    ctx.date(end).resolved_end(&Tz::UTC) - ctx.date(&start).resolved_start(&Tz::UTC)
+                }),
+            _ => ctx.date(end).resolved_end(&Tz::UTC) - ctx.date(&start).resolved_start(&Tz::UTC),
         })
     }
 
