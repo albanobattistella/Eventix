@@ -22,6 +22,14 @@ use crate::sync::o365::O365;
 use crate::sync::{fs::FSSyncer, vdirsyncer::VDirSyncer};
 use crate::{CollectionSettings, State};
 
+fn ensure_collection_writable(col_id: &str, col: &CollectionSettings) -> anyhow::Result<()> {
+    if col.syncer().is_read_only() {
+        Err(anyhow!("Collection '{}' is read-only", col_id))
+    } else {
+        Ok(())
+    }
+}
+
 /// Defines the interface for a calendar synchronisation backend.
 ///
 /// Each backend (filesystem, vdirsyncer, Microsoft 365) implements this trait to provide
@@ -152,6 +160,7 @@ pub async fn create_calendar_by_folder(
     folder: &String,
 ) -> anyhow::Result<()> {
     let (xdg, idx, col, token) = sync_snapshot(state, col_id)?;
+    ensure_collection_writable(col_id, &col)?;
     let mut cal_sync = get_sync_from_snapshot(xdg, idx, col_id.clone(), col, token, None).await?;
     cal_sync.syncer.create_cal_by_folder(folder).await
 }
@@ -163,6 +172,7 @@ pub(crate) async fn delete_calendar_by_folder(
     folder: &String,
 ) -> anyhow::Result<()> {
     let (xdg, idx, col, token) = sync_snapshot(state, col_id)?;
+    ensure_collection_writable(col_id, &col)?;
     let mut cal_sync = get_sync_from_snapshot(xdg, idx, col_id.clone(), col, token, None).await?;
     cal_sync.syncer.delete_cal_by_folder(folder).await
 }

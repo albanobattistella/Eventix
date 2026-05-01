@@ -23,25 +23,35 @@ function stopSpinning(spinnerId, error) {
 
 function postWithSpinner(spinnerId, url, onresponse) {
     startSpinning(spinnerId);
-    postRequest(url, function (data) {
-        const error = handleCalErrors(data);
-        const auth_error = handleAuthErrors(data, url, spinnerId);
-        stopSpinning(spinnerId, error || auth_error);
-        onresponse(data, !auth_error);
-    });
+    postRequest(
+        url,
+        function (data) {
+            const error = handleCalErrors(data);
+            const auth_error = handleAuthErrors(data, url, spinnerId);
+            stopSpinning(spinnerId, error || auth_error);
+            onresponse(data, !auth_error);
+        },
+        function () {
+            stopSpinning(spinnerId, true);
+        },
+    );
 }
 
 function handleAuthErrors(data, op_url, spinnerId) {
     var error = false;
     if (!data || !data.collections) return false;
-    for (var cal in data.collections) {
+    for (var col in data.collections) {
         // auth problem? Then show auth popup
-        if (data.collections[cal].AuthFailed) {
-            fireEvent(createAuthEvent(cal, data.collections[cal].AuthFailed, op_url, spinnerId));
+        if (data.collections[col].AuthFailed) {
+            fireEvent(createAuthEvent(col, data.collections[col].AuthFailed, op_url, spinnerId));
             return true;
-        } else if (data.collections[cal].Error) {
-            notifyAJAXError(data.collections[cal].Error);
+        } else if (data.collections[col].Error) {
             error = true;
+            // Report the error once per collection
+            notifyAJAXError(data.collections[col].Error, col);
+        } else {
+            // successful sync, clear collection error
+            notifyAJAXError(null, col);
         }
     }
     return error;

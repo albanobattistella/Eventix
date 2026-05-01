@@ -19,7 +19,7 @@ async fn discover_collection_succeeds() {
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let producer_cal = pair
         .producer()
         .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
@@ -48,7 +48,7 @@ async fn add_calendar_creates_remote_calendar_visible_to_other_peer() {
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let observer = pair.spawn_peer();
     assert!(
         !observer.calendar_dir(REMOTE_CALENDAR_FOLDER).exists(),
@@ -74,13 +74,37 @@ async fn add_calendar_creates_remote_calendar_visible_to_other_peer() {
 }
 
 #[tokio::test]
+async fn add_calendar_fails_for_read_only_collection() {
+    if let Some(msg) = check_requirements() {
+        eprintln!("{msg}");
+        return;
+    }
+
+    let pair = RadicalePair::new(true, false).await;
+
+    let (status, body) = pair
+        .consumer()
+        .try_create_calendar(REMOTE_CALENDAR_NAME)
+        .await;
+    assert_eq!(status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(!body.is_empty(), "unexpected body:\n{body}");
+    assert!(
+        !pair
+            .consumer()
+            .calendar_dir(REMOTE_CALENDAR_FOLDER)
+            .exists(),
+        "read-only addcal must not create a local cache directory"
+    );
+}
+
+#[tokio::test]
 async fn sync_collection_pulls_remote_event_into_store() {
     if let Some(msg) = check_requirements() {
         eprintln!("{msg}");
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let producer_cal = pair
         .producer()
         .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
@@ -116,7 +140,7 @@ async fn sync_all_pulls_remote_event_into_store() {
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let producer_cal = pair
         .producer()
         .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
@@ -152,7 +176,7 @@ async fn reload_collection_refreshes_local_cache_from_remote_server() {
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let producer_cal = pair
         .producer()
         .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
@@ -196,7 +220,7 @@ async fn reload_calendar_refreshes_only_the_selected_calendar() {
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let producer_work = pair
         .producer()
         .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
@@ -266,7 +290,7 @@ async fn delete_calendar_by_folder_removes_remote_calendar_for_other_peer() {
         return;
     }
 
-    let pair = RadicalePair::new().await;
+    let pair = RadicalePair::new(false, false).await;
     let observer_before_delete = pair.spawn_peer();
     let producer_cal = pair
         .producer()
@@ -335,4 +359,36 @@ async fn delete_calendar_by_folder_removes_remote_calendar_for_other_peer() {
         "consumer local cache should be removed for the deleted calendar"
     );
     pair.consumer().assert_store_missing(&uid).await;
+}
+
+#[tokio::test]
+async fn delete_calendar_by_folder_fails_for_read_only_collection() {
+    if let Some(msg) = check_requirements() {
+        eprintln!("{msg}");
+        return;
+    }
+
+    let pair = RadicalePair::new(true, false).await;
+    pair.producer()
+        .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
+        .await;
+
+    let (status, body) = pair
+        .consumer()
+        .try_delete_calendar_by_folder(REMOTE_CALENDAR_FOLDER)
+        .await;
+    assert_eq!(status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(!body.is_empty(), "unexpected body:\n{body}");
+
+    let observer = pair.spawn_peer();
+    let json = observer.discover_collection().await;
+    assert_eq!(json["changed"], true);
+    assert_eq!(
+        json["collections"][COL_ID],
+        serde_json::json!({"Success": true})
+    );
+    assert!(
+        observer.calendar_dir(REMOTE_CALENDAR_FOLDER).exists(),
+        "read-only delete must leave the remote calendar intact"
+    );
 }

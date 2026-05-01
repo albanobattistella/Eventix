@@ -9,10 +9,11 @@ use chrono::NaiveDate;
 use eventix_ical::objects::{CalDate, CalTodoStatus, EventLike};
 use tempfile::TempDir;
 
+use eventix_state::{CollectionSettings, SyncerType};
 use helper::create::{assert_success, read_created_ics};
 use helper::{
     CAL_ID, assert_error, assert_no_ics, encode_form, first_component, make_router, make_state,
-    merge_fields, post,
+    make_state_from_col, merge_fields, post,
 };
 
 // --- Helpers specific to create-todo tests ---
@@ -264,4 +265,27 @@ async fn todo_missing_summary() {
     assert_eq!(status, 200);
     assert_error(&resp_body);
     assert_no_ics(&cal_dir);
+}
+
+/// A todo without any available calendars is rejected with a user-facing error banner.
+#[tokio::test]
+async fn todo_without_any_calendars() {
+    let tmp = TempDir::new().unwrap();
+    let col = CollectionSettings::new(SyncerType::FileSystem {
+        path: tmp.path().to_string_lossy().into_owned(),
+    });
+    let (state, _settings_tmp) = make_state_from_col(col);
+    let router = make_router(state);
+
+    let fields = merge_fields(base_todo_fields(), &[("summary", "Buy groceries")]);
+    let body = encode_form(&fields);
+
+    let (status, resp_body) = post(router, "/pages/items/add?ctype=Todo", &body).await;
+    assert_eq!(status, 200);
+    assert_error(&resp_body);
+    assert!(
+        resp_body.contains("Please create a calendar first."),
+        "expected missing-calendar message, got:\n{resp_body}"
+    );
+    assert_no_ics(tmp.path());
 }

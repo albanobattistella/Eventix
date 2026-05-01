@@ -100,21 +100,23 @@
                             </a>
                         </div>
                     {% else if remote_collection() %}
-                        <div class="ev_cal_box_right_item">
-                            <a
-                                class="ev_button ev_button_critical"
-                                title="{{ "warning.delete_calendar_remote_folder"|t(locale) }}"
-                                href="javascript:deleteRemoteCalendar('{{ col_id }}',
-                                                                         '{{ cal.folder() }}',
-                                                                         'delete_remote_calendar_{{ cal.id() }}',
-                                                                         reloadContentIfPossible)"
-                            >
-                                <i
-                                    id="delete_remote_calendar_{{ cal.id() }}"
-                                    class="bi bi-trash"
-                                ></i>
-                            </a>
-                        </div>
+                        {% if !col.syncer().is_read_only()  && col.syncer().supports_mkrm() %}
+                            <div class="ev_cal_box_right_item">
+                                <a
+                                    class="ev_button ev_button_critical"
+                                    title="{{ "warning.delete_calendar_remote_folder"|t(locale) }}"
+                                    href="javascript:deleteRemoteCalendar('{{ col_id }}',
+                                                                             '{{ cal.folder() }}',
+                                                                             'delete_remote_calendar_{{ cal.id() }}',
+                                                                             reloadContentIfPossible)"
+                                >
+                                    <i
+                                        id="delete_remote_calendar_{{ cal.id() }}"
+                                        class="bi bi-trash"
+                                    ></i>
+                                </a>
+                            </div>
+                        {% endif %}
                     {% endif %}
                     <div class="ev_cal_box_right_item">
                         <a

@@ -40,6 +40,12 @@ pub async fn handler(
 }
 
 async fn run_calop(state: &mut eventix_state::State, req: Params) -> anyhow::Result<Json<()>> {
+    let col = state
+        .settings_mut()
+        .collections_mut()
+        .get_mut(&req.col_id)
+        .ok_or_else(|| anyhow!("No collection '{}'", &req.col_id))?;
+
     match req.op {
         Operation::Delete => {
             match (&req.cal_id, &req.folder) {
@@ -52,6 +58,10 @@ async fn run_calop(state: &mut eventix_state::State, req: Params) -> anyhow::Res
                         ))?;
                 }
                 (None, Some(folder)) => {
+                    if col.syncer().is_read_only() {
+                        return Err(anyhow!("Collection '{}' is read-only", &req.col_id));
+                    }
+
                     eventix_state::State::delete_calendar_by_folder(state, &req.col_id, folder)
                         .await
                         .context(format!(
@@ -71,12 +81,6 @@ async fn run_calop(state: &mut eventix_state::State, req: Params) -> anyhow::Res
                 .cal_id
                 .as_ref()
                 .ok_or_else(|| anyhow!("Missing calendar id"))?;
-            let col = state
-                .settings_mut()
-                .collections_mut()
-                .get_mut(&req.col_id)
-                .ok_or_else(|| anyhow!("No collection '{}'", &req.col_id))?;
-
             let cal = col
                 .all_calendars_mut()
                 .get_mut(cal_id)

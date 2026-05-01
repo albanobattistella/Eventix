@@ -12,7 +12,7 @@ function getRequest(url, success, type = "json") {
     });
 }
 
-function postRequest(url, success) {
+function postRequest(url, success, error) {
     $.ajax({
         type: "POST",
         url: url,
@@ -21,7 +21,10 @@ function postRequest(url, success) {
             success(data);
             reloadSidebar();
         },
-        error: handleAJAXError,
+        error: function (jqXHR, textStatus, errorThrown) {
+            handleAJAXError(jqXHR, textStatus, errorThrown);
+            if (error) error();
+        },
     });
 }
 

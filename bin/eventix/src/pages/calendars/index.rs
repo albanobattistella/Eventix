@@ -132,9 +132,10 @@ pub async fn content(State(state): State<EventixState>) -> Result<impl IntoRespo
     let collection_options = state
         .settings()
         .collections()
-        .keys()
-        .map(|col_id| ComboOption::new(col_id, col_id.clone()))
-        .collect();
+        .iter()
+        .filter(|(_, col)| !col.syncer().is_read_only() && col.syncer().supports_mkrm())
+        .map(|(col_id, _)| ComboOption::new(col_id, col_id.clone()))
+        .collect::<Vec<_>>();
 
     let html = CalendarsTemplate {
         locale,
@@ -143,7 +144,7 @@ pub async fn content(State(state): State<EventixState>) -> Result<impl IntoRespo
         collection_select: ComboboxTemplate::new_with_options(
             state.locale(),
             "new_calendar_collection",
-            state.settings().collections().keys().next().cloned(),
+            collection_options.first().map(|o| o.value().clone()),
             collection_options,
         ),
     }

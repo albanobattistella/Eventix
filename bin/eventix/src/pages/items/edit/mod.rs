@@ -102,6 +102,9 @@ impl CompEdit {
 }
 
 impl CompAction for CompEdit {
+    fn calendar(&self) -> Option<&String> {
+        self.calendar.as_ref()
+    }
     fn summary(&self) -> &String {
         &self.summary
     }

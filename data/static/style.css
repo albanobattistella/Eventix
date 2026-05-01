@@ -508,6 +508,15 @@ a.ev_button_critical:hover {
     word-break: break-word;
 }
 
+.ev_error_entry_cal {
+    padding: 0px 4px;
+    margin-right: 6px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: bold;
+    color: white;
+}
+
 .ev_button_selected,
 .ev_button_selected:hover,
 .ev_button_selected:active,

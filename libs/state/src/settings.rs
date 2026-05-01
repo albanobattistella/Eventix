@@ -45,11 +45,23 @@ impl Settings {
 
     /// Returns an iterator over all enabled calendars across all collections.
     ///
+    /// Each item is a tuple of `(calendar_id, &CalendarSettings, collection_id)`.
+    pub fn calendars_with_col(
+        &self,
+    ) -> impl Iterator<Item = (&String, &CalendarSettings, &String)> {
+        self.collections.iter().flat_map(|(col_id, col)| {
+            col.calendars
+                .iter()
+                .filter(|(_, c)| c.enabled())
+                .map(move |(cal_id, c)| (cal_id, c, col_id))
+        })
+    }
+
+    /// Returns an iterator over all enabled calendars across all collections.
+    ///
     /// Each item is a tuple of `(calendar_id, &CalendarSettings)`.
     pub fn calendars(&self) -> impl Iterator<Item = (&String, &CalendarSettings)> {
-        self.collections
-            .values()
-            .flat_map(|col| col.calendars.iter().filter(|(_, c)| c.enabled()))
+        self.calendars_with_col().map(|(id, c, _)| (id, c))
     }
 
     /// Returns the collection and calendar settings for the enabled calendar with the given `id`.
@@ -290,6 +302,19 @@ impl SyncerType {
     /// Returns whether this syncer supports reloading calendar data on demand.
     pub fn supports_reload(&self) -> bool {
         matches!(self, Self::VDirSyncer { .. } | Self::O365 { .. })
+    }
+
+    /// Returns whether this syncer supports the creation and deletion of calendars
+    pub fn supports_mkrm(&self) -> bool {
+        matches!(self, Self::VDirSyncer { .. } | Self::FileSystem { .. })
+    }
+
+    /// Returns whether this syncer is configured as read-only.
+    pub fn is_read_only(&self) -> bool {
+        match self {
+            Self::VDirSyncer { read_only, .. } | Self::O365 { read_only, .. } => *read_only,
+            Self::FileSystem { .. } => false,
+        }
     }
 
     /// Returns the local filesystem path where calendar data for this syncer is stored.
