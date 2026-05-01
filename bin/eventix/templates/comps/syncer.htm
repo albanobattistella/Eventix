@@ -90,16 +90,8 @@
                 </dd>
             </dl>
             <dl>
-                <dt>{{ "Password Command"|t(locale) }}:</dt>
-                <dd>
-                    <input
-                        type="text"
-                        name="{{ name }}[vdir_pw_cmd]"
-                        size="60"
-                        value="{{ value.vdir_pw_cmd }}"
-                    />
-                    <div>{{ "info.user_pw_cmd"|t(locale) }}</div>
-                </dd>
+                <dt>{{ "Password Source"|t(locale) }}:</dt>
+                <dd>{{ vdir_pw()|safe }}</dd>
             </dl>
             <dl>
                 <dt>{{ "Sync window"|t(locale) }}:</dt>
@@ -177,16 +169,8 @@
                 </dd>
             </dl>
             <dl>
-                <dt>{{ "Password Command"|t(locale) }}:</dt>
-                <dd>
-                    <input
-                        type="text"
-                        name="{{ name }}[o365_pw_cmd]"
-                        size="60"
-                        value="{{ value.o365_pw_cmd }}"
-                    />
-                    <div>{{ "info.user_pw_cmd_o365"|t(locale) }}</div>
-                </dd>
+                <dt>{{ "Password Source"|t(locale) }}:</dt>
+                <dd>{{ o365_pw()|safe }}</dd>
             </dl>
             <dl>
                 <dt>{{ "Sync window"|t(locale) }}:</dt>

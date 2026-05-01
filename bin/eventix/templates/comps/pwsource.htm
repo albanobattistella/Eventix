@@ -1,0 +1,62 @@
+<input type="hidden" id="{{ id }}_mode" name="{{ name }}[mode]" value="{{ mode() }}" />
+<div id="{{ id }}-tabs">
+    <ul>
+        <li>
+            <a href="#{{ id }}-tabs-SECRETSERVICE"> {{ "Desktop Keyring"|t(locale) }} </a>
+        </li>
+        <li>
+            <a href="#{{ id }}-tabs-COMMAND"> {{ "Password Command"|t(locale) }} </a>
+        </li>
+    </ul>
+    <div id="{{ id }}-tabs-SECRETSERVICE">
+        <div style="display: flex; gap: .4em; flex-wrap: wrap; align-items: center;">
+            <label for="{{ id }}_attr_key">{{ "Attribute"|t(locale) }}:</label>
+            <input
+                type="text"
+                id="{{ id }}_attr_key"
+                name="{{ name }}[attr_key]"
+                size="20"
+                value="{{ value.attr_key }}"
+            />
+            <label for="{{ id }}_attr_value">{{ "Value"|t(locale) }}:</label>
+            <input
+                type="text"
+                id="{{ id }}_attr_value"
+                name="{{ name }}[attr_value]"
+                size="30"
+                value="{{ value.attr_value }}"
+            />
+        </div>
+        <div>{{ "info.user_secret_service"|t(locale) }}</div>
+    </div>
+    <div id="{{ id }}-tabs-COMMAND">
+        <input type="text" name="{{ name }}[cmd]" size="60" value="{{ value.cmd }}" />
+        <div>{{ "info.user_pw_cmd"|t(locale)|safe }}</div>
+    </div>
+</div>
+
+<!-- prettier-ignore-start -->
+<style type="text/css">
+    #{{ id }}-tabs > div {
+        padding: 0.4em;
+    }
+    #{{ id }}-tabs pre {
+        margin: 0.1em;
+    }
+</style>
+<!-- prettier-ignore-end -->
+<script>
+    $(function () {
+        $("#{{ id }}-tabs").tabs({
+            activate: function (event, data) {
+                const name = data.newPanel.attr("id").replace("{{ id }}-tabs-", "");
+                $("#{{ id }}_mode").attr("value", name);
+            },
+        });
+        const mode = $("#{{ id }}_mode").attr("value");
+        if (mode != "NONE") {
+            const tabs = ["SECRETSERVICE", "COMMAND"];
+            $("#{{ id }}-tabs").tabs("option", "active", tabs.indexOf(mode));
+        }
+    });
+</script>

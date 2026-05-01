@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::Context;
 use axum::http::StatusCode;
 use eventix_ical::objects::EventLike;
-use eventix_state::{CollectionSettings, EmailAccount, EventixState, SyncerType};
+use eventix_state::{CollectionSettings, EmailAccount, EventixState, PasswordSource, SyncerType};
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -399,7 +399,7 @@ impl RadicalePair {
             url: server_url.to_string(),
             read_only,
             username: Some(USERNAME.to_string()),
-            password_cmd: password_cmd(),
+            password_source: password_cmd().map(|command| PasswordSource::Command { command }),
             time_span: Default::default(),
         })
     }

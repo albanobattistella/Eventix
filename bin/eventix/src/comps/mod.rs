@@ -17,6 +17,7 @@ pub mod occurrence;
 pub mod organizer;
 pub mod pagination;
 pub mod partstat;
+pub mod pwsource;
 pub mod radiogroup;
 pub mod recur;
 pub mod syncer;

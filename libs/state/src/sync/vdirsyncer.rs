@@ -350,12 +350,10 @@ impl VDirSyncer {
                 format!("username = \"{}\"\n", Self::escape_value(&auth.user)).as_bytes(),
             )
             .await?;
-            cfg.write_all(b"password.fetch = [\"command\"").await?;
-            for comp in &auth.pw_cmd {
-                cfg.write_all(format!(", \"{}\"", Self::escape_value(comp)).as_bytes())
-                    .await?;
-            }
-            cfg.write_all(b"]\n").await?;
+            cfg.write_all(
+                format!("password = \"{}\"\n", Self::escape_value(&auth.password)).as_bytes(),
+            )
+            .await?;
         } else {
             cfg.write_all(b"username = \"\"\n").await?;
             cfg.write_all(b"password = \"\"\n").await?;
@@ -990,7 +988,7 @@ mod tests {
 
         let auth = SyncerAuth {
             user: "user@example.com".to_string(),
-            pw_cmd: vec!["pass".to_string(), "show".to_string(), "work".to_string()],
+            password: "super-secret".to_string(),
         };
 
         let syncer = VDirSyncer::new_with_runner(
@@ -1009,7 +1007,7 @@ mod tests {
 
         let content = tokio::fs::read_to_string(&syncer.cfg).await.unwrap();
         assert!(content.contains("username = \"user@example.com\""));
-        assert!(content.contains("password.fetch = [\"command\", \"pass\", \"show\", \"work\"]"));
+        assert!(content.contains("password = \"super-secret\""));
         assert!(content.contains("read_only = true"));
     }
 

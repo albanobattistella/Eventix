@@ -230,6 +230,22 @@ impl SyncTimeSpan {
     }
 }
 
+/// The source for passwords that we feed vdirsyncer with.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum PasswordSource {
+    /// Looks up the secret from the desktop keyring via Secret Service.
+    SecretService {
+        /// Attributes used to search the keyring item.
+        attributes: BTreeMap<String, String>,
+    },
+    /// Runs an custom command to retrieve the password.
+    Command {
+        /// Shell command and arguments used to retrieve the password.
+        command: Vec<String>,
+    },
+}
+
 /// The backend used to synchronise and provide calendar data for a collection.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SyncerType {
@@ -248,8 +264,9 @@ pub enum SyncerType {
         read_only: bool,
         /// Optional username for authentication; if absent, no credentials are sent.
         username: Option<String>,
-        /// Shell command and arguments used to retrieve the password at runtime, if any.
-        password_cmd: Option<Vec<String>>,
+        /// Credentials source used to retrieve the password at runtime, if any.
+        #[serde(default)]
+        password_source: Option<PasswordSource>,
         /// The time range to synchronise from the CalDAV server.
         ///
         /// Defaults to both bounds being `Infinite`, which synchronises everything.
@@ -262,8 +279,8 @@ pub enum SyncerType {
         email: EmailAccount,
         /// When `true`, the remote calendar is treated as read-only and local changes are not pushed.
         read_only: bool,
-        /// Shell command and arguments used to retrieve the OAuth password/token at runtime.
-        password_cmd: Vec<String>,
+        /// Credentials source used to retrieve the OAuth password/token at runtime.
+        password_source: PasswordSource,
         /// The time range to synchronise from the CalDAV server.
         ///
         /// Defaults to both bounds being `Infinite`, which synchronises everything.
@@ -507,7 +524,7 @@ mod tests {
             url: "https://dav.example.com".to_string(),
             read_only: false,
             username: Some("alice".to_string()),
-            password_cmd: None,
+            password_source: None,
             time_span: Default::default(),
         }
     }

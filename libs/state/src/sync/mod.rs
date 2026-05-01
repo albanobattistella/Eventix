@@ -8,6 +8,7 @@ mod vdirsyncer;
 
 use anyhow::{Context, anyhow};
 use async_trait::async_trait;
+use secret_service::{EncryptionType, SecretService};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -17,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use xdg::BaseDirectories;
 
-use crate::settings::SyncerType;
+use crate::settings::{PasswordSource, SyncerType};
 use crate::sync::o365::O365;
 use crate::sync::{fs::FSSyncer, vdirsyncer::VDirSyncer};
 use crate::{CollectionSettings, State};
@@ -74,8 +75,75 @@ pub trait Syncer: Send {
 pub struct SyncerAuth {
     /// The account username (typically an email address).
     user: String,
-    /// Shell command and arguments used to retrieve the account password at runtime.
-    pw_cmd: Vec<String>,
+    /// Password resolved by Eventix and written into the generated sync configuration.
+    password: String,
+}
+
+async fn resolve_password(source: &PasswordSource) -> anyhow::Result<String> {
+    match source {
+        PasswordSource::Command { command } => resolve_password_command(command).await,
+        PasswordSource::SecretService { attributes } => {
+            resolve_secret_service_password(attributes).await
+        }
+    }
+}
+
+async fn resolve_password_command(command: &[String]) -> anyhow::Result<String> {
+    let (program, args) = command
+        .split_first()
+        .ok_or_else(|| anyhow!("Password command is empty"))?;
+    let output = tokio::process::Command::new(program)
+        .args(args)
+        .output()
+        .await
+        .with_context(|| format!("Running password command '{}' failed", program))?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Password command '{}' exited with {}",
+            program,
+            output.status
+        ));
+    }
+
+    let password =
+        String::from_utf8(output.stdout).context("Password command returned non-UTF-8 output")?;
+    Ok(password.trim_end_matches(['\r', '\n']).to_string())
+}
+
+async fn resolve_secret_service_password(
+    attributes: &std::collections::BTreeMap<String, String>,
+) -> anyhow::Result<String> {
+    let ss = SecretService::connect(EncryptionType::Dh)
+        .await
+        .context("Connecting to Secret Service failed")?;
+    let search = ss
+        .search_items(
+            attributes
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect(),
+        )
+        .await
+        .context("Searching Secret Service failed")?;
+
+    let item = if let Some(item) = search.unlocked.first() {
+        item
+    } else if let Some(item) = search.locked.first() {
+        item.unlock()
+            .await
+            .context("Unlocking Secret Service item failed")?;
+        item
+    } else {
+        return Err(anyhow!("No matching Secret Service item found"));
+    };
+
+    let secret = item
+        .get_secret()
+        .await
+        .context("Reading Secret Service item failed")?;
+    let password =
+        String::from_utf8(secret).context("Secret Service item contained non-UTF-8 data")?;
+    Ok(password)
 }
 
 /// The outcome of a single collection or calendar sync operation.
@@ -293,17 +361,19 @@ async fn get_sync(
     let auth = match col.syncer() {
         SyncerType::VDirSyncer {
             username: Some(username),
-            password_cmd: Some(password_cmd),
+            password_source: Some(password_source),
             ..
         } => Some(SyncerAuth {
             user: username.clone(),
-            pw_cmd: password_cmd.clone(),
+            password: resolve_password(password_source).await?,
         }),
-        SyncerType::O365 { password_cmd, .. } => {
+        SyncerType::O365 {
+            password_source, ..
+        } => {
             let user = col.email().map(|e| e.address());
             Some(SyncerAuth {
                 user: user.unwrap(),
-                pw_cmd: password_cmd.clone(),
+                password: resolve_password(password_source).await?,
             })
         }
         _ => None,
