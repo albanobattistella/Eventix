@@ -593,7 +593,7 @@ mod tests {
     fn make_auth() -> SyncerAuth {
         SyncerAuth {
             user: "user@example.com".to_string(),
-            pw_cmd: vec!["echo".to_string(), "secret".to_string()],
+            password: vec!["secret".to_string()],
         }
     }
 

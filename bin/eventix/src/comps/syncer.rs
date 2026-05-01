@@ -13,6 +13,7 @@ use std::fmt::{self, Display};
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::comps::pwsource::{PasswordSourceRequest, PasswordSourceTemplate};
 use crate::html::filters;
 use crate::pages::Page;
 
@@ -75,7 +76,7 @@ pub struct SyncerRequest {
     vdir_url: String,
     vdir_readonly: Option<String>,
     vdir_username: String,
-    vdir_pw_cmd: String,
+    vdir_pw: PasswordSourceRequest,
     vdir_time_span: String,
     #[serde(
         deserialize_with = "SyncerRequest::deserialize_years",
@@ -85,7 +86,7 @@ pub struct SyncerRequest {
     o365_name: String,
     o365_email: String,
     o365_readonly: Option<String>,
-    o365_pw_cmd: String,
+    o365_pw: PasswordSourceRequest,
     o365_time_span: String,
     #[serde(
         deserialize_with = "SyncerRequest::deserialize_years",
@@ -104,13 +105,13 @@ impl Default for SyncerRequest {
             vdir_url: String::new(),
             vdir_readonly: None,
             vdir_username: String::new(),
-            vdir_pw_cmd: String::new(),
+            vdir_pw: PasswordSourceRequest::default(),
             vdir_time_span: String::new(),
             vdir_time_span_years: DEFAULT_TIME_SPAN_YEARS,
             o365_name: String::new(),
             o365_email: String::new(),
             o365_readonly: None,
-            o365_pw_cmd: String::new(),
+            o365_pw: PasswordSourceRequest::default(),
             o365_time_span: String::new(),
             o365_time_span_years: DEFAULT_TIME_SPAN_YEARS,
             fs_path: String::new(),
@@ -138,7 +139,7 @@ impl SyncerRequest {
                 url,
                 read_only,
                 username,
-                password_cmd,
+                password_source,
                 time_span,
             } => {
                 sync.vdir_name = email.name().clone();
@@ -149,10 +150,7 @@ impl SyncerRequest {
                 };
                 sync.vdir_url = url.clone();
                 sync.vdir_username = username.clone().unwrap_or_default();
-                sync.vdir_pw_cmd = password_cmd
-                    .as_ref()
-                    .map(|vec| vec.join(" "))
-                    .unwrap_or_default();
+                sync.vdir_pw = PasswordSourceRequest::from_source(password_source.as_ref());
                 (sync.vdir_time_span, sync.vdir_time_span_years) =
                     Self::time_span_to_fields(time_span);
             }
@@ -160,7 +158,7 @@ impl SyncerRequest {
             SyncerType::O365 {
                 email,
                 read_only,
-                password_cmd,
+                password_source,
                 time_span,
             } => {
                 sync.o365_name = email.name().clone();
@@ -169,7 +167,7 @@ impl SyncerRequest {
                     true => Some(String::new()),
                     false => None,
                 };
-                sync.o365_pw_cmd = password_cmd.join(" ");
+                sync.o365_pw = PasswordSourceRequest::from_source(Some(password_source));
                 (sync.o365_time_span, sync.o365_time_span_years) =
                     Self::time_span_to_fields(time_span);
             }
@@ -209,6 +207,10 @@ impl SyncerRequest {
                     page.add_error(locale.translate("error.collection_time_span_years"));
                     return false;
                 }
+
+                if !self.vdir_username.is_empty() && !self.vdir_pw.check(locale, page) {
+                    return false;
+                }
                 true
             }
             Syncer::O365 => {
@@ -223,6 +225,10 @@ impl SyncerRequest {
                 if self.o365_time_span == "years" && self.o365_time_span_years > MAX_TIME_SPAN_YEARS
                 {
                     page.add_error(locale.translate("error.collection_time_span_years"));
+                    return false;
+                }
+
+                if !self.o365_pw.check(locale, page) {
                     return false;
                 }
                 true
@@ -254,7 +260,7 @@ impl SyncerRequest {
                     user if !user.is_empty() => Some(user.clone()),
                     _ => None,
                 },
-                password_cmd: Self::make_pw_cmd(&self.vdir_pw_cmd),
+                password_source: self.vdir_pw.to_source(),
                 time_span: Self::fields_to_time_span(
                     &self.vdir_time_span,
                     self.vdir_time_span_years,
@@ -263,7 +269,7 @@ impl SyncerRequest {
             Syncer::O365 => SyncerType::O365 {
                 email: EmailAccount::new(self.o365_name.clone(), self.o365_email.clone()),
                 read_only: self.o365_readonly.is_some(),
-                password_cmd: Self::make_pw_cmd(&self.o365_pw_cmd).unwrap(),
+                password_source: self.o365_pw.to_source().unwrap(),
                 time_span: Self::fields_to_time_span(
                     &self.o365_time_span,
                     self.o365_time_span_years,
@@ -274,17 +280,6 @@ impl SyncerRequest {
             },
         };
         Some(ty)
-    }
-
-    fn make_pw_cmd(cmd: &str) -> Option<Vec<String>> {
-        match cmd
-            .split_whitespace()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
-        {
-            vec if !vec.is_empty() => Some(vec),
-            _ => None,
-        }
     }
 
     /// Deserializes the years spinner value, accepting both plain integers and string-encoded
@@ -356,5 +351,21 @@ impl<'a> SyncerTemplate<'a> {
             Some(f) => format!("{f}"),
             None => String::from("NONE"),
         }
+    }
+
+    pub fn vdir_pw(&self) -> PasswordSourceTemplate {
+        PasswordSourceTemplate::new(
+            self.locale.clone(),
+            format!("{}[vdir_pw]", self.name),
+            self.value.vdir_pw.clone(),
+        )
+    }
+
+    pub fn o365_pw(&self) -> PasswordSourceTemplate {
+        PasswordSourceTemplate::new(
+            self.locale.clone(),
+            format!("{}[o365_pw]", self.name),
+            self.value.o365_pw.clone(),
+        )
     }
 }

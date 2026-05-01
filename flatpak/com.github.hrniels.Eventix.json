@@ -11,14 +11,15 @@
     "finish-args": [
         "--share=network",
         "--share=ipc",
+        "--device=dri",
         "--socket=fallback-x11",
         "--socket=x11",
-        "--device=dri",
         "--socket=session-bus",
         "--filesystem=xdg-run/pipewire-0",
         "--talk-name=org.kde.StatusNotifierWatcher",
         "--talk-name=org.freedesktop.Notifications",
-        "--talk-name=org.freedesktop.portal.Desktop"
+        "--talk-name=org.freedesktop.portal.Desktop",
+        "--talk-name=org.freedesktop.secrets"
     ],
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
@@ -36,7 +37,8 @@
                 "mkdir -p /app/build-artifacts",
                 "cp target/release/eventix /app/build-artifacts/",
                 "cp target/release/eventix-app /app/build-artifacts/",
-                "cp target/release/eventix-import /app/build-artifacts/"
+                "cp target/release/eventix-import /app/build-artifacts/",
+                "cp target/release/eventix-keyring /app/build-artifacts/"
             ],
             "sources": [
                 {
@@ -53,6 +55,7 @@
                 "install -Dm755 /app/build-artifacts/eventix -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-app -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-import -t /app/bin/",
+                "install -Dm755 /app/build-artifacts/eventix-keyring -t /app/bin/",
                 "rm -rf /app/build-artifacts",
                 "install -Dm644 com.github.hrniels.Eventix.desktop -t /app/share/applications/",
                 "install -Dm644 com.github.hrniels.Eventix-Import.desktop -t /app/share/applications/",

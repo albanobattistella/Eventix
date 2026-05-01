@@ -31,8 +31,8 @@ use xdg::BaseDirectories;
 
 pub use persalarms::{PersonalAlarms, PersonalCalendarAlarms};
 pub use settings::{
-    CalendarAlarmType, CalendarSettings, CollectionSettings, EmailAccount, Settings, SyncTimeBound,
-    SyncTimeSpan, SyncerType,
+    CalendarAlarmType, CalendarSettings, CollectionSettings, EmailAccount, PasswordSource,
+    Settings, SyncTimeBound, SyncTimeSpan, SyncerType,
 };
 pub use sync::{SyncColResult, SyncResult, Syncer, create_calendar_by_folder, log_file};
 

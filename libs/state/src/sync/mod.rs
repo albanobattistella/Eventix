@@ -74,8 +74,8 @@ pub trait Syncer: Send {
 pub struct SyncerAuth {
     /// The account username (typically an email address).
     user: String,
-    /// Shell command and arguments used to retrieve the account password at runtime.
-    pw_cmd: Vec<String>,
+    /// Command argument array for vdirsyncer's password.fetch.
+    password: Vec<String>,
 }
 
 /// The outcome of a single collection or calendar sync operation.
@@ -293,17 +293,19 @@ async fn get_sync(
     let auth = match col.syncer() {
         SyncerType::VDirSyncer {
             username: Some(username),
-            password_cmd: Some(password_cmd),
+            password_source: Some(password_source),
             ..
         } => Some(SyncerAuth {
             user: username.clone(),
-            pw_cmd: password_cmd.clone(),
+            password: password_source.build_command(),
         }),
-        SyncerType::O365 { password_cmd, .. } => {
+        SyncerType::O365 {
+            password_source, ..
+        } => {
             let user = col.email().map(|e| e.address());
             Some(SyncerAuth {
                 user: user.unwrap(),
-                pw_cmd: password_cmd.clone(),
+                password: password_source.build_command(),
             })
         }
         _ => None,

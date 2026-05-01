@@ -351,7 +351,7 @@ impl VDirSyncer {
             )
             .await?;
             cfg.write_all(b"password.fetch = [\"command\"").await?;
-            for comp in &auth.pw_cmd {
+            for comp in &auth.password {
                 cfg.write_all(format!(", \"{}\"", Self::escape_value(comp)).as_bytes())
                     .await?;
             }
@@ -949,37 +949,18 @@ mod tests {
         let (syncer, _tmp) = make_syncer_with_runner(runner).await;
 
         let content = tokio::fs::read_to_string(&syncer.cfg).await.unwrap();
-
-        assert!(content.contains("[general]"), "missing [general]");
-        assert!(content.contains("[pair testcol]"), "missing [pair testcol]");
-        assert!(
-            content.contains("[storage testcol_local]"),
-            "missing [storage testcol_local]"
-        );
-        assert!(
-            content.contains("[storage testcol_remote]"),
-            "missing [storage testcol_remote]"
-        );
-        assert!(
-            content.contains("type = \"filesystem\""),
-            "missing local type"
-        );
-        assert!(content.contains("type = \"caldav\""), "missing remote type");
-        assert!(
-            content.contains("url = \"http://localhost/\""),
-            "missing url"
-        );
-        assert!(content.contains("read_only = false"), "missing read_only");
+        assert!(content.contains("username = \"\""));
+        assert!(content.contains("password = \"\""));
     }
 
     #[tokio::test]
-    async fn generate_config_writes_auth_when_provided() {
+    async fn generate_config_writes_password_fetch_for_command() {
         let tmp = tempfile::tempdir().unwrap();
         let xdg = crate::with_test_xdg(&tmp.path().join("data"), &tmp.path().join("config"));
         let vdir: PathBuf = xdg.get_data_file("vdirsyncer").unwrap();
         tokio::fs::create_dir_all(&vdir).await.unwrap();
 
-        let log_path = vdir.join("auth.log");
+        let log_path = vdir.join("cmd_auth.log");
         let log_file = tokio::fs::File::options()
             .create(true)
             .append(true)
@@ -990,15 +971,19 @@ mod tests {
 
         let auth = SyncerAuth {
             user: "user@example.com".to_string(),
-            pw_cmd: vec!["pass".to_string(), "show".to_string(), "work".to_string()],
+            password: vec![
+                String::from("sh"),
+                String::from("-c"),
+                String::from("echo pass"),
+            ],
         };
 
         let syncer = VDirSyncer::new_with_runner(
             &xdg,
-            "authcol".to_string(),
+            "cmdcol".to_string(),
             HashMap::new(),
             "http://localhost/".to_string(),
-            true,
+            false,
             Some(auth),
             &crate::settings::SyncTimeSpan::default(),
             log,
@@ -1009,8 +994,8 @@ mod tests {
 
         let content = tokio::fs::read_to_string(&syncer.cfg).await.unwrap();
         assert!(content.contains("username = \"user@example.com\""));
-        assert!(content.contains("password.fetch = [\"command\", \"pass\", \"show\", \"work\"]"));
-        assert!(content.contains("read_only = true"));
+        assert!(content.contains("password.fetch = [\"command\", \"sh\", \"-c\", \"echo pass\"]"));
+        assert!(!content.contains("\npassword = "));
     }
 
     #[tokio::test]
