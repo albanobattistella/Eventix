@@ -304,6 +304,11 @@ impl SyncerType {
         matches!(self, Self::VDirSyncer { .. } | Self::O365 { .. })
     }
 
+    /// Returns whether this syncer supports the creation and deletion of calendars
+    pub fn supports_mkrm(&self) -> bool {
+        matches!(self, Self::VDirSyncer { .. } | Self::FileSystem { .. })
+    }
+
     /// Returns whether this syncer is configured as read-only.
     pub fn is_read_only(&self) -> bool {
         match self {

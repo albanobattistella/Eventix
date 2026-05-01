@@ -384,12 +384,12 @@ impl Syncer for O365 {
         self.vdirsyncer.delete_cal(cal_id).await
     }
 
-    async fn create_cal_by_folder(&mut self, folder: &String) -> anyhow::Result<()> {
-        self.vdirsyncer.create_cal_by_folder(folder).await
+    async fn create_cal_by_folder(&mut self, _folder: &String) -> anyhow::Result<()> {
+        Err(anyhow!("Not supported"))
     }
 
-    async fn delete_cal_by_folder(&mut self, folder: &String) -> anyhow::Result<()> {
-        self.vdirsyncer.delete_cal_by_folder(folder).await
+    async fn delete_cal_by_folder(&mut self, _folder: &String) -> anyhow::Result<()> {
+        Err(anyhow!("Not supported"))
     }
 
     async fn delete(&mut self, all: bool) -> anyhow::Result<()> {
