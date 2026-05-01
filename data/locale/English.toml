@@ -11,7 +11,9 @@
 "info.collection_name" = "Note that the name cannot be changed afterwards and must only contain the characters A-Z, a-z, 0-9, _, and -."
 "info.paste_url_and_retry" = "Please paste the resulting URL here and retry:"
 "info.user_pw_cmd" = "Username and password are used for authentification. The password command is executed to retrieve the password. Example: 'secret-tool lookup your-attribute your-value'"
+"info.user_pw_cmd_o365" = "Your email address and a password are used for authentification. The password command is executed to retrieve the password. Example: 'secret-tool lookup your-attribute your-value'"
 "info.name_and_email" = "Your name and email address is used for shared calendar events (when you are the organizer or an attendee)."
+"info.name_and_email_o365" = "Your name and email address is used for shared calendar events (when you are the organizer or an attendee). In addition, the email address is required for authentication."
 
 "warning.reload_calendar" = "Warning: removes all local items and forgets the calendar settings. Local changes will be lost."
 "warning.reload_collection" = "Warning: removes all local items and reloads them from the server side. Local changes will be lost."

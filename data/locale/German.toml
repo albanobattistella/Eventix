@@ -11,7 +11,9 @@
 "info.collection_name" = "Beachte dass der Name im Nachhinein nicht mehr geändert werden kann und nur die Zeichen A-Z, a-z, 0-9, _, und - enthalten darf."
 "info.paste_url_and_retry" = "Bitte füge die erhaltene URL hier ein und versuche es erneut:"
 "info.user_pw_cmd" = "Benutzername und Passwort werden für die Authentifizierung verwendet. Der Passwortbefehl wird ausgeführt, um das Passwort zu erhalten. Beispiel: 'secret-tool lookup dein-attribut dein-wert'"
+"info.user_pw_cmd_o365" = "Deine E-Mail Adresse und ein Passwort werden für die Authentifizierung verwendet. Der Passwortbefehl wird ausgeführt, um das Passwort zu erhalten. Beispiel: 'secret-tool lookup dein-attribut dein-wert'"
 "info.name_and_email" = "Dein Name und deine E-Mail Adresse werden für geteilte Kalendertermine verwendet (falls du Organisator oder Teilnehmer bist)."
+"info.name_and_email_o365" = "Dein Name und deine E-Mail Adresse werden für geteilte Kalendertermine verwendet (falls du Organisator oder Teilnehmer bist). Zusätzlich wird es zur Authentifizierung benötigt."
 
 "warning.reload_calendar" = "Warnung: entfernt alle lokalen Elemente und vergisst die Kalendereinstellungen. Lokale Änderungen werden überschrieben."
 "warning.reload_collection" = "Warnung: entfernt alle lokalen Elemente und lädt sie erneut von der Serverseite. Lokale Änderungen werden überschrieben."
