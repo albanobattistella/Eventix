@@ -10,11 +10,8 @@ window with system tray integration.
 
 - Monthly, weekly, and list calendar views
 - Event (`VEVENT`) and task (`VTODO`) management with full create / edit / delete support
-- Full RFC 5545 `RRULE` recurrence support (`SECONDLY` through `YEARLY`, `COUNT`, `UNTIL`, `BYDAY`,
-  `BYMONTH`, `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO`, `BYSETPOS`, `BYHOUR`, `BYMINUTE`, `BYSECOND`,
-  `WKST`, `EXDATE`)
+- Mostly complete implementation of the iCalendar standard (RFC 5545)
 - Alarm / notification system with per-calendar personal alarm overrides
-- Attendee and organizer support for group-scheduled events
 - CalDAV synchronization via [vdirsyncer](https://github.com/pimutils/vdirsyncer) (bundled)
 - Microsoft 365 synchronization via [DavMail](http://davmail.sourceforge.net/) (bundled)
 - Local filesystem calendar support (no sync required)
@@ -101,15 +98,12 @@ eventix/
 └── contrib/vdirsyncer/ # vdirsyncer submodule bundled with Eventix
 ```
 
-## Tipps
+## Notes
 
-Since Eventix is running in a flatpak sandbox, it does not have direct access to, for example, your
-password manager. If you want to retrieve passwords from a password manager, one way is to use
-`flatpak-spawn` and enter something like the following as the "Password Command" for a collection:
-
-```bash
-flatpak-spawn --host secret-tool lookup <attribute> <value>
-```
+Since Eventix runs in a flatpak sandbox, it requires access to the DBus session bus for proper tray
+icon support. This is unfortunate, but there does not seem be to a better way at the moment. If you
+do not need a tray icon, you can just remove DBus session access and Eventix will simply not create
+a tray icon.
 
 ## License
 
