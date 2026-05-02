@@ -27,6 +27,7 @@
              {% if occ.is_all_day() || occ.is_all_day_on(day_date.clone()) %}
                  ev_occ_block_center
              {% endif %}
+             ev_week_event
              ev_cal_src ev_cal_src_{{ occ.directory() }}
          {% else if mode == OccurrenceMode::Timed %}
              ev_occ_timed
