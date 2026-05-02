@@ -383,6 +383,22 @@ impl CollectionSettings {
         }
     }
 
+    /// Returns whether this collection is configured as read-only.
+    ///
+    /// This respects debug mode: in debug mode, everything is writable. In release mode, this
+    /// returns the syncer's read-only state.
+    pub fn is_read_only(&self) -> bool {
+        if !cfg!(test) && cfg!(debug_assertions) {
+            return false;
+        }
+        self.is_syncer_read_only()
+    }
+
+    /// Returns whether the syncer itself is configured as read-only.
+    pub fn is_syncer_read_only(&self) -> bool {
+        self.syncer.is_read_only()
+    }
+
     /// Returns the local filesystem path where this collection's calendar data is stored.
     pub fn path(&self, xdg: &BaseDirectories, name: &str) -> PathBuf {
         self.syncer.path(xdg, name)

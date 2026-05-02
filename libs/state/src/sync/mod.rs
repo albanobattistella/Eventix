@@ -23,7 +23,7 @@ use crate::sync::{fs::FSSyncer, vdirsyncer::VDirSyncer};
 use crate::{CollectionSettings, State};
 
 fn ensure_collection_writable(col_id: &str, col: &CollectionSettings) -> anyhow::Result<()> {
-    if col.syncer().is_read_only() {
+    if col.is_read_only() {
         Err(anyhow!("Collection '{}' is read-only", col_id))
     } else {
         Ok(())

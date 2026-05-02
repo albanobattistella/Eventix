@@ -38,6 +38,7 @@ pub struct DayOccurrence<'a> {
     overlap: Option<OccurrenceOverlap>,
     partstat: Option<CalPartStat>,
     owner: bool,
+    read_only: bool,
     effective_alarms: bool,
 }
 
@@ -58,6 +59,7 @@ impl<'a> DayOccurrence<'a> {
             inner,
             partstat,
             owner,
+            col_settings.is_read_only(),
             pers_alarms.has_alarms(inner, alarm_type),
         )
     }
@@ -66,6 +68,7 @@ impl<'a> DayOccurrence<'a> {
         inner: &Occurrence<'a>,
         partstat: Option<CalPartStat>,
         owner: bool,
+        read_only: bool,
         effective_alarms: bool,
     ) -> Self {
         static NEXT_ID: Lazy<Mutex<u64>> = Lazy::new(|| Mutex::new(0));
@@ -78,6 +81,7 @@ impl<'a> DayOccurrence<'a> {
             overlap: None,
             partstat,
             owner,
+            read_only,
             effective_alarms,
         }
     }
@@ -139,6 +143,10 @@ impl<'a> DayOccurrence<'a> {
 
     pub fn is_owner(&self) -> bool {
         self.owner
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
     }
 
     pub fn participant_status(&self) -> Option<CalPartStat> {
@@ -289,7 +297,7 @@ mod tests {
             false,
             display_tz,
         );
-        DayOccurrence::new(&occ, None, false, false)
+        DayOccurrence::new(&occ, None, false, false, false)
     }
 
     #[test]

@@ -18,7 +18,7 @@
     id="{{ occ.id() }}"
     data-uid="{{ occ.uid() }}"
     data-rid="{{ occ.rid_str() }}"
-    data-owner="{{ occ.is_owner() }}"
+    data-owner="{{ occ.is_owner() && !occ.is_read_only() }}"
     data-recurrent="{{ occ.is_recurrent() }}"
     class="
          ev_event_occurrence
@@ -54,10 +54,10 @@
          "
 >
     {% if mode == OccurrenceMode::Timed %}
-        {% if occ.is_owner() && occ.occurrence_starts_on(day_date.clone()) %}
+        {% if occ.is_owner() && !occ.is_read_only() && occ.occurrence_starts_on(day_date.clone()) %}
             <div class="ev_resize_handle ev_resize_top"></div>
         {% endif %}
-        {% if occ.is_owner() && occ.occurrence_ends_on(day_date.clone()) %}
+        {% if occ.is_owner() && !occ.is_read_only() && occ.occurrence_ends_on(day_date.clone()) %}
             <div class="ev_resize_handle ev_resize_bottom"></div>
         {% endif %}
     {% endif %}

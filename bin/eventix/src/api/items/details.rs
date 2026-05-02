@@ -53,6 +53,7 @@ struct DetailsTemplate<'a> {
     occ_partstat: Option<PartStatTemplate>,
     edit_modes: Option<EditModesTemplate>,
     owner: bool,
+    read_only: bool,
 }
 
 fn attendee_status<E: EventLike>(
@@ -95,7 +96,7 @@ async fn handler(
         None
     };
 
-    let day_occ = DayOccurrence::new(&occ, occ_stat, owner, has_alarms);
+    let day_occ = DayOccurrence::new(&occ, occ_stat, owner, collection.is_read_only(), has_alarms);
 
     let html = DetailsTemplate {
         org: occ
@@ -122,6 +123,7 @@ async fn handler(
                 req.uid.clone(),
                 None,
                 occ.is_recurrent(),
+                collection.is_read_only(),
             )
         }),
         occ_partstat: occ_stat.map(|stat| {
@@ -132,9 +134,10 @@ async fn handler(
                 req.uid.clone(),
                 Some(day_occ.rid_str()),
                 occ.is_recurrent(),
+                collection.is_read_only(),
             )
         }),
-        edit_modes: if owner {
+        edit_modes: if owner && !collection.is_read_only() {
             req.rid.map(|rid| {
                 EditModesTemplate::new(locale.clone(), "edit", req.uid.clone(), rid.to_string())
             })
@@ -143,6 +146,7 @@ async fn handler(
         },
         occ: day_occ,
         owner,
+        read_only: collection.is_read_only(),
         locale,
     }
     .render()

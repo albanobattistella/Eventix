@@ -113,8 +113,9 @@ pub async fn content_with(
         ),
         calendars: CalComboTemplate::new(
             "calendar",
-            Calendars::new(&state, |_id, settings| {
-                settings.types().contains(&req.ctype)
+            Calendars::new(&state, |id, settings| {
+                let (col, _) = state.settings().calendar(id).unwrap();
+                !col.is_read_only() && settings.types().contains(&req.ctype)
             }),
             calendar.clone(),
             false,

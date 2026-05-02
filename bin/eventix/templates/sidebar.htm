@@ -10,13 +10,15 @@
 <div class="ev_border ev_box" id="box_events">
     <div class="ev_header">
         {{ "Next Events"|t(locale) }}
-        <a
-            id="link-event"
-            style="float: right"
-            href="javascript:loadWithPrev('/pages/items/add?ctype=Event')"
-        >
-            <i class="bi bi-plus-square" style="color: white"></i>
-        </a>
+        {% if page.any_writable_events() %}
+            <a
+                id="link-event"
+                style="float: right"
+                href="javascript:loadWithPrev('/pages/items/add?ctype=Event')"
+            >
+                <i class="bi bi-plus-square" style="color: white"></i>
+            </a>
+        {% endif %}
     </div>
     <div class="ev_scrollbox">
         {% for day in events.days %}
@@ -37,13 +39,15 @@
 <div class="ev_border ev_box" id="box_tasks">
     <div class="ev_header">
         {{ "Next Tasks"|t(locale) }}
-        <a
-            id="link-todo"
-            style="float: right"
-            href="javascript:loadWithPrev('/pages/items/add?ctype=Todo')"
-        >
-            <i class="bi bi-plus-square" style="color: white"></i>
-        </a>
+        {% if page.any_writable_tasks() %}
+            <a
+                id="link-todo"
+                style="float: right"
+                href="javascript:loadWithPrev('/pages/items/add?ctype=Todo')"
+            >
+                <i class="bi bi-plus-square" style="color: white"></i>
+            </a>
+        {% endif %}
     </div>
     <div class="ev_scrollbox">
         <!-- prettier-ignore-start -->

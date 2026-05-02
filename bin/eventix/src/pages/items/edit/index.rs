@@ -141,7 +141,8 @@ pub async fn content_with(
             CalComboTemplate::new(
                 "calendar",
                 Calendars::new(&state, |id, settings| {
-                    id == &cal || settings.types().contains(&occ.ctype())
+                    let (col, _) = state.settings().calendar(id).unwrap();
+                    id == &cal || (!col.is_read_only() && settings.types().contains(&occ.ctype()))
                 }),
                 Arc::new(cal.to_string()),
                 false,

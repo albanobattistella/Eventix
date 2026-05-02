@@ -12,6 +12,7 @@ pub struct Calendar {
     pub sync_error: bool,
     pub fgcolor: String,
     pub bgcolor: String,
+    pub read_only: bool,
 }
 
 #[derive(Default)]
@@ -24,21 +25,25 @@ impl Calendars {
     {
         let mut calendars = state
             .settings()
-            .calendars_with_col()
-            .filter_map(|(id, settings, col_id)| {
-                if filter(id, settings) {
-                    Some(Calendar {
-                        id: id.clone(),
-                        col_id: col_id.clone(),
-                        name: settings.name().clone(),
-                        enabled: !state.misc().calendar_disabled(id),
-                        sync_error: state.misc().has_calendar_error(id),
-                        fgcolor: settings.fgcolor().clone(),
-                        bgcolor: settings.bgcolor().clone(),
-                    })
-                } else {
-                    None
-                }
+            .collections()
+            .iter()
+            .flat_map(|(col_id, col)| {
+                col.calendars().filter_map(|(id, settings)| {
+                    if filter(id, settings) {
+                        Some(Calendar {
+                            id: id.clone(),
+                            col_id: col_id.clone(),
+                            name: settings.name().clone(),
+                            enabled: !state.misc().calendar_disabled(id),
+                            sync_error: state.misc().has_calendar_error(id),
+                            fgcolor: settings.fgcolor().clone(),
+                            bgcolor: settings.bgcolor().clone(),
+                            read_only: col.is_read_only(),
+                        })
+                    } else {
+                        None
+                    }
+                })
             })
             .collect::<Vec<_>>();
         calendars.sort_by(|a, b| a.name.cmp(&b.name));

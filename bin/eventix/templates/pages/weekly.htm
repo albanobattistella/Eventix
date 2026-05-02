@@ -63,14 +63,16 @@
                     align="center"
                     class="ev_week_day_header{% if day.date == today %}ev_today{% endif %}"
                 >
-                    <a
-                        href="javascript:loadWithPrev(
+                    {% if page.any_writable_events() %}
+                        <a
+                            href="javascript:loadWithPrev(
                      '/pages/items/add?ctype=Event&date={{ day.date.format("%Y-%m-%d") }}&allday=true')"
-                        style="float: left"
-                        class="ev_add_icon"
-                    >
-                        <i class="bi bi-plus-square"></i>
-                    </a>
+                            style="float: left"
+                            class="ev_add_icon"
+                        >
+                            <i class="bi bi-plus-square"></i>
+                        </a>
+                    {% endif %}
                     <b>
                         {{
                             day.date|
@@ -185,13 +187,15 @@
                                         data-hour="{{ hour }}"
                                         class="ev_hour_cell"
                                     >
-                                        <a
-                                            href="javascript:loadWithPrev('/pages/items/add?ctype=Event&date={{ day.date.format("%Y-%m-%d") }}&hour={{ hour }}')"
-                                            style="float: left"
-                                            class="ev_add_icon"
-                                        >
-                                            <i class="bi bi-plus-square"></i>
-                                        </a>
+                                        {% if page.any_writable_events() %}
+                                            <a
+                                                href="javascript:loadWithPrev('/pages/items/add?ctype=Event&date={{ day.date.format("%Y-%m-%d") }}&hour={{ hour }}')"
+                                                style="float: left"
+                                                class="ev_add_icon"
+                                            >
+                                                <i class="bi bi-plus-square"></i>
+                                            </a>
+                                        {% endif %}
                                     </div>
                                 {% endfor %}
                                 {% for occ in day.occurrences %}

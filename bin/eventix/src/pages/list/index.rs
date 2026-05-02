@@ -82,6 +82,7 @@ struct ListComponent<'a> {
     comp: &'a CalComponent,
     org: Option<OrganizerTemplate<'a>>,
     owner: bool,
+    read_only: bool,
     personal_alarms: bool,
     alarms: Option<Vec<CalAlarm>>,
     part_stat: Option<CalPartStat>,
@@ -113,6 +114,7 @@ impl<'a> ListComponent<'a> {
         let (col_settings, cal_settings) = settings.calendar(file.directory()).unwrap();
         let user_mail = col_settings.email().map(|e| e.address());
         let owner = c.is_owned_by(user_mail.as_ref());
+        let read_only = col_settings.is_read_only();
         let part_stat = match (user_mail, owner) {
             (Some(user_mail), false) => occ.base().attendee_status(user_mail),
             _ => None,
@@ -159,6 +161,7 @@ impl<'a> ListComponent<'a> {
                 .map(|org| OrganizerTemplate::new(locale.clone(), org)),
             comp: c,
             owner,
+            read_only,
             alarms: pers_alarms.effective_alarms(&occ, cal_settings.alarms()),
             personal_alarms: matches!(cal_settings.alarms(), CalendarAlarmType::Personal { .. }),
             part_stat_btns: part_stat.map(|stat| {
@@ -169,6 +172,7 @@ impl<'a> ListComponent<'a> {
                     c.uid().clone(),
                     None,
                     false,
+                    read_only,
                 )
             }),
             part_stat,

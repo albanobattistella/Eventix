@@ -68,7 +68,7 @@
                 <td width="32%" align="right">
                     {% if let Some(td) = c.comp.as_todo() %}
                         {%
-                            if !td.is_recurrent() &&
+                            if !c.read_only && !td.is_recurrent() &&
                             td.status().unwrap_or(CalTodoStatus::NeedsAction) != CalTodoStatus::Completed
                         %}
                             <a
@@ -81,18 +81,20 @@
                         {% endif %}
                     {% endif %}
                     {% if c.owner %}
-                        <a id="delete-button-{{ id }}" class="ev_button ev_button_critical">
-                            <i class="bi bi-trash"></i>
-                            <span>{{ "Delete"|t(locale) }}</span>
-                        </a>
-                        <a
-                            class="ev_button ev_button_normal"
-                            style="width: 60px"
-                            href="javascript:loadWithPrev('/pages/items/edit?uid={{ c.comp.uid() }}&mode=Series')"
-                        >
-                            <i class="bi bi-pencil"></i>
-                            <span>{{ "Edit_short"|t(locale) }}</span>
-                        </a>
+                        {% if !c.read_only %}
+                            <a id="delete-button-{{ id }}" class="ev_button ev_button_critical">
+                                <i class="bi bi-trash"></i>
+                                <span>{{ "Delete"|t(locale) }}</span>
+                            </a>
+                            <a
+                                class="ev_button ev_button_normal"
+                                style="width: 60px"
+                                href="javascript:loadWithPrev('/pages/items/edit?uid={{ c.comp.uid() }}&mode=Series')"
+                            >
+                                <i class="bi bi-pencil"></i>
+                                <span>{{ "Edit_short"|t(locale) }}</span>
+                            </a>
+                        {% endif %}
                     {% else %}
                         {% if let Some(part_stat_btns) = c.part_stat_btns %}
                             {{ part_stat_btns|safe }}

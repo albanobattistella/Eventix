@@ -45,12 +45,8 @@ impl<'a> EditAlarmTemplate<'a> {
                 &uid, rid
             ))?;
 
-        let alarm_type = state
-            .settings()
-            .calendar(occ.directory())
-            .unwrap()
-            .1
-            .alarms();
+        let (col_settings, cal_settings) = state.settings().calendar(occ.directory()).unwrap();
+        let alarm_type = cal_settings.alarms();
         let personal = if let Some(pers_cal) = state.personal_alarms().get(occ.directory()) {
             pers_cal.get(&uid, rid.as_ref())
         } else {
@@ -58,7 +54,13 @@ impl<'a> EditAlarmTemplate<'a> {
         };
 
         let effective = state.personal_alarms().effective_alarms(&occ, alarm_type);
-        let day_occ = DayOccurrence::new(&occ, None, false, effective.is_some());
+        let day_occ = DayOccurrence::new(
+            &occ,
+            None,
+            false,
+            col_settings.is_read_only(),
+            effective.is_some(),
+        );
 
         let config = Some(AlarmConfig::from_alarms(
             match personal {

@@ -58,7 +58,7 @@ async fn run_calop(state: &mut eventix_state::State, req: Params) -> anyhow::Res
                         ))?;
                 }
                 (None, Some(folder)) => {
-                    if col.syncer().is_read_only() {
+                    if col.is_syncer_read_only() {
                         return Err(anyhow!("Collection '{}' is read-only", &req.col_id));
                     }
 

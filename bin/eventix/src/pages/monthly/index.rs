@@ -21,6 +21,7 @@ use std::sync::Arc;
 use crate::comps::occurrence::{OccurrenceMode, OccurrenceTemplate};
 use crate::html::filters;
 use crate::objects::DayOccurrence;
+use crate::pages::Page;
 use crate::pages::error::HTMLError;
 use crate::util::parse_human_date;
 
@@ -41,6 +42,7 @@ pub struct Request {
 #[derive(Template)]
 #[template(path = "pages/monthly.htm")]
 struct MonthlyTemplate {
+    page: Page,
     locale: Arc<dyn Locale + Send + Sync>,
     weekdays: Vec<String>,
     days: Vec<Day>,
@@ -55,6 +57,7 @@ pub async fn content(
     State(state): State<EventixState>,
     Query(req): Query<Request>,
 ) -> Result<impl IntoResponse, HTMLError> {
+    let page = Page::new(&state).await;
     let locale = state.lock().await.locale();
     let timezone = *locale.timezone();
     let now = Local::now().with_timezone(&timezone);
@@ -129,6 +132,7 @@ pub async fn content(
     }
 
     let html = MonthlyTemplate {
+        page,
         weekdays,
         month: format!(
             "{} {}",
