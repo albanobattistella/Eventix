@@ -1055,7 +1055,8 @@ span.ev_cal_src_disabled {
     font-style: italic;
 }
 
-.ev_dst_gap {
+.ev_dst_gap,
+.ev_dst_fold {
     background: repeating-linear-gradient(
         45deg,
         rgba(0, 0, 0, 0.05),
@@ -1063,23 +1064,23 @@ span.ev_cal_src_disabled {
         rgba(0, 0, 0, 0.1) 10px,
         rgba(0, 0, 0, 0.1) 20px
     );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    z-index: 2000;
 }
-.ev_dst_fold {
-    background:
-        repeating-linear-gradient(
-            45deg,
-            rgba(0, 0, 0, 0.05),
-            rgba(0, 0, 0, 0.05) 10px,
-            rgba(0, 0, 0, 0.1) 10px,
-            rgba(0, 0, 0, 0.1) 20px
-        ),
-        repeating-linear-gradient(
-            -45deg,
-            rgba(0, 0, 0, 0.05),
-            rgba(0, 0, 0, 0.05) 10px,
-            rgba(0, 0, 0, 0.1) 10px,
-            rgba(0, 0, 0, 0.1) 20px
-        );
+.ev_dst_gap::after {
+    content: "\f128"; /* bi-arrow-down */
+    font-family: "bootstrap-icons";
+    font-size: 20px;
+    color: rgba(0, 0, 0, 0.3);
+}
+.ev_dst_fold::after {
+    content: "\f148"; /* bi-arrow-up */
+    font-family: "bootstrap-icons";
+    font-size: 20px;
+    color: rgba(0, 0, 0, 0.3);
 }
 
 /* ------------ JQUERY ------------ */
