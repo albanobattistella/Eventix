@@ -18,6 +18,8 @@ const FILENAME: &str = "settings.toml";
 /// name and each contains one or more calendar entries.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
+    #[serde(default)]
+    version: u32,
     #[serde(skip)]
     path: PathBuf,
     #[serde(rename = "collection")]
@@ -28,6 +30,7 @@ impl Settings {
     /// Creates a new empty `Settings` instance backed by the given file path.
     pub fn new(path: PathBuf) -> Self {
         Self {
+            version: crate::CURRENT_VERSION,
             path,
             collections: BTreeMap::new(),
         }

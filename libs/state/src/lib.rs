@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod migration;
 mod misc;
 mod persalarms;
 mod settings;
@@ -9,6 +10,9 @@ mod sync;
 
 /// Utility helpers exposed to other crates and tests.
 pub mod util;
+
+/// The current version of the persisted state files.
+pub const CURRENT_VERSION: u32 = 1;
 
 use anyhow::{Context, anyhow};
 use chrono::NaiveDateTime;
@@ -497,6 +501,7 @@ impl State {
 
 /// Read and deserialize a TOML file from `filename`.
 pub fn load_from_file<D: DeserializeOwned>(filename: &PathBuf) -> anyhow::Result<D> {
+    migration::migrate_if_needed(filename).context("migrating file")?;
     debug!("Reading from {:?}", filename);
     let mut file = File::options()
         .read(true)

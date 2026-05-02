@@ -163,6 +163,8 @@ impl AlarmOverwrite {
 /// for that event or occurrence.
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PersonalCalendarAlarms {
+    #[serde(default)]
+    version: u32,
     #[serde(skip)]
     path: PathBuf,
     alarms: Vec<AlarmOverwrite>,
@@ -171,6 +173,7 @@ pub struct PersonalCalendarAlarms {
 impl PersonalCalendarAlarms {
     fn new_empty(path: PathBuf) -> Self {
         Self {
+            version: crate::CURRENT_VERSION,
             path,
             alarms: Vec::default(),
         }
@@ -178,9 +181,9 @@ impl PersonalCalendarAlarms {
 
     /// Loads a `PersonalCalendarAlarms` from a TOML file at the given path.
     pub fn new_from_file(path: PathBuf) -> anyhow::Result<Self> {
-        super::load_from_file::<Self>(&path).map(|res| Self {
-            path,
-            alarms: res.alarms,
+        super::load_from_file::<Self>(&path).map(|mut res| {
+            res.path = path;
+            res
         })
     }
 
