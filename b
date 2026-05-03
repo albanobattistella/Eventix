@@ -301,7 +301,7 @@ def cmd_flatpak(args):
         # put everything into a subdirectory
         "--transform=s#^#eventix/#",
         # include .git for GIT_HASH and submodule version metadata
-        ".git", "bin", "contrib", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json",
+        ".git", "bin", "contrib", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
         # include the files for flatpak building
         "flatpak/" + APP_ID + "-Import.desktop",
         "flatpak/" + APP_ID + ".desktop",
