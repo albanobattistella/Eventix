@@ -84,7 +84,7 @@ impl CalStore {
     }
 
     /// Returns a mutable reference to the directory with given id.
-    pub fn try_directory_mut(&mut self, id: &Arc<String>) -> Result<&mut CalDir, ColError> {
+    pub fn directory_mut(&mut self, id: &Arc<String>) -> Result<&mut CalDir, ColError> {
         let write_protected = self.directory_write_protected(id);
         let dir = self
             .dirs
@@ -114,7 +114,7 @@ impl CalStore {
     }
 
     /// Returns a mutable reference to the file with given uid.
-    pub fn try_file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Result<&mut CalFile, ColError> {
+    pub fn file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Result<&mut CalFile, ColError> {
         let uid_str = uid.as_ref();
         let dir = self
             .dirs
@@ -123,7 +123,7 @@ impl CalStore {
             .ok_or_else(|| ColError::ComponentNotFound(uid_str.to_string()))?
             .id()
             .clone();
-        self.try_directory_mut(&dir)?
+        self.directory_mut(&dir)?
             .file_by_id_mut(uid_str)
             .ok_or_else(|| ColError::ComponentNotFound(uid_str.to_string()))
     }
@@ -265,15 +265,15 @@ impl CalStore {
             return Err(ColError::DirWriteProtected((**new).clone()));
         }
 
-        let old_src = self.try_directory_mut(old)?;
+        let old_src = self.directory_mut(old)?;
         let mut file = old_src.remove_file(&path)?;
 
-        let new_src = match self.try_directory_mut(new) {
+        let new_src = match self.directory_mut(new) {
             Ok(src) => src,
             Err(err) => {
                 // if that failed, store the file in the old directory again
                 file.save().unwrap();
-                self.try_directory_mut(old).unwrap().add_file(file);
+                self.directory_mut(old).unwrap().add_file(file);
                 return Err(err);
             }
         };
@@ -286,7 +286,7 @@ impl CalStore {
             file.set_directory(old.clone());
             file.set_path(old_src.path().join(file.path().file_name().unwrap()));
             file.save().unwrap();
-            self.try_directory_mut(old).unwrap().add_file(file);
+            self.directory_mut(old).unwrap().add_file(file);
             return Err(e);
         }
         new_src.add_file(file);
@@ -368,7 +368,7 @@ mod tests {
         assert_eq!(store.directories()[0].name(), "keep");
     }
 
-    // --- directory / try_directory_mut ---
+    // --- directory / directory_mut ---
 
     #[test]
     fn directory_found_and_not_found() {
@@ -392,9 +392,9 @@ mod tests {
         assert!(store.directory(&id_b).is_some());
         assert!(store.directory(&id_missing).is_none());
 
-        assert!(store.try_directory_mut(&id_a).is_ok());
+        assert!(store.directory_mut(&id_a).is_ok());
         assert!(matches!(
-            store.try_directory_mut(&id_missing),
+            store.directory_mut(&id_missing),
             Err(ColError::DirNotFound(_))
         ));
     }
@@ -418,7 +418,7 @@ mod tests {
         assert_eq!(all_files.len(), 3);
     }
 
-    // --- file_by_id / try_file_by_id_mut ---
+    // --- file_by_id / file_by_id_mut ---
 
     #[test]
     fn file_by_id_found_and_not_found() {
@@ -437,16 +437,16 @@ mod tests {
         assert!(store.file_by_id("uid-in-b").is_some());
         assert!(store.file_by_id("uid-absent").is_none());
 
-        // try_file_by_id_mut variant
-        assert!(store.try_file_by_id_mut("uid-in-a").is_ok());
+        // file_by_id_mut variant
+        assert!(store.file_by_id_mut("uid-in-a").is_ok());
         assert!(matches!(
-            store.try_file_by_id_mut("uid-absent"),
+            store.file_by_id_mut("uid-absent"),
             Err(ColError::ComponentNotFound(_))
         ));
     }
 
     #[test]
-    fn try_directory_mut_fails_for_write_protected_directory() {
+    fn directory_mut_fails_for_write_protected_directory() {
         let mut store = CalStore::default();
         let id = make_id("protected");
         store.add(CalDir::new_empty(
@@ -458,13 +458,13 @@ mod tests {
         let _guard = store.protect_directories(vec![id.clone()]).unwrap();
 
         assert!(matches!(
-            store.try_directory_mut(&id),
+            store.directory_mut(&id),
             Err(ColError::DirWriteProtected(ref protected_id)) if protected_id == &*id
         ));
     }
 
     #[test]
-    fn try_file_by_id_mut_fails_for_write_protected_directory() {
+    fn file_by_id_mut_fails_for_write_protected_directory() {
         let mut store = CalStore::default();
         let id = make_id("protected");
         let mut dir = CalDir::new_empty(id.clone(), PathBuf::default(), "Protected".into());
@@ -474,7 +474,7 @@ mod tests {
         let _guard = store.protect_directories(vec![id.clone()]).unwrap();
 
         assert!(matches!(
-            store.try_file_by_id_mut("uid-1"),
+            store.file_by_id_mut("uid-1"),
             Err(ColError::DirWriteProtected(ref protected_id)) if protected_id == &*id
         ));
     }
@@ -495,7 +495,7 @@ mod tests {
         drop(guard);
 
         assert!(!store.directory_write_protected(&id));
-        assert!(store.try_directory_mut(&id).is_ok());
+        assert!(store.directory_mut(&id).is_ok());
     }
 
     // --- todos / events ---

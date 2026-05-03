@@ -71,9 +71,7 @@ impl Syncer for FSSyncer {
                 continue;
             }
 
-            let dir = state
-                .store_mut()
-                .try_directory_mut(&cal_id.clone().into())?;
+            let dir = state.store_mut().directory_mut(&cal_id.clone().into())?;
 
             let mut changed = false;
             changed |= dir.rescan_for_additions(&local_tz)?;

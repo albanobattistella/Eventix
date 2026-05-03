@@ -64,7 +64,7 @@ where
 
     let dir = state
         .store_mut()
-        .try_directory_mut(&calendar)
+        .directory_mut(&calendar)
         .map_err(anyhow::Error::from)?;
 
     let mut path = dir.path().clone();

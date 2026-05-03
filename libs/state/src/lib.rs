@@ -217,7 +217,7 @@ impl State {
             for (cal_id, cal) in col.calendars() {
                 let cal_id = Arc::new(cal_id.clone());
                 if store.directory(&cal_id).is_some() {
-                    match store.try_directory_mut(&cal_id) {
+                    match store.directory_mut(&cal_id) {
                         Ok(dir) => dir.set_name(cal.name().clone()),
                         Err(eventix_ical::col::ColError::DirWriteProtected(_)) => {}
                         Err(err) => return Err(err.into()),

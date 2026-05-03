@@ -202,7 +202,7 @@ async fn handle_import(state: EventixState, req: ImportOptions) -> anyhow::Resul
     let cal = Arc::from(req.calendar.clone());
     let dir = state
         .store_mut()
-        .try_directory_mut(&cal)
+        .directory_mut(&cal)
         .map_err(anyhow::Error::from)?;
 
     let files = CalFile::new_from_external_file(

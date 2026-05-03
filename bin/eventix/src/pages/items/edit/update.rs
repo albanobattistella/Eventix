@@ -43,7 +43,7 @@ fn action_update(
     let (store, personal_alarms) = state.store_and_alarms_mut();
 
     let file = store
-        .try_file_by_id_mut(&req.uid)
+        .file_by_id_mut(&req.uid)
         .context(format!("Unable to find component with uid '{}'", req.uid))?;
     let ctx = file.calendar().date_context();
 
@@ -182,7 +182,7 @@ fn action_update(
             let old_dir = file.directory().clone();
             let dir = state
                 .store_mut()
-                .try_directory_mut(&old_dir)
+                .directory_mut(&old_dir)
                 .map_err(anyhow::Error::from)?;
             dir.delete_by_uid(&req.uid)?;
         } else {
@@ -193,7 +193,7 @@ fn action_update(
         // save to file
         let dir = state
             .store_mut()
-            .try_directory_mut(&calendar)
+            .directory_mut(&calendar)
             .map_err(anyhow::Error::from)?;
 
         let mut path = dir.path().clone();

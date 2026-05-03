@@ -50,7 +50,7 @@ async fn run_shift(
 
     let file = state
         .store_mut()
-        .try_file_by_id_mut(&req.uid)
+        .file_by_id_mut(&req.uid)
         .context(format!("Unable to find component with uid '{}'", req.uid))?;
     let ctx = file.calendar().date_context();
 
