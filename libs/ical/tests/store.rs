@@ -47,6 +47,7 @@ fn two_dir_store(
         make_id("dir-a"),
         tmp_a.path().to_path_buf(),
         "DirA".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -54,6 +55,7 @@ fn two_dir_store(
         make_id("dir-b"),
         tmp_b.path().to_path_buf(),
         "DirB".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -143,6 +145,7 @@ fn occurrence_by_id_with_rid_returns_overwrite() {
         make_id("dir"),
         tmp.path().to_path_buf(),
         "D".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -222,6 +225,7 @@ fn save_persists_all_dirs() {
         make_id("dir-a"),
         tmp_a.path().to_path_buf(),
         "DirA".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -229,6 +233,7 @@ fn save_persists_all_dirs() {
         make_id("dir-b"),
         tmp_b.path().to_path_buf(),
         "DirB".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -239,14 +244,14 @@ fn save_persists_all_dirs() {
 
     // Mutate one event in each directory.
     store
-        .try_file_by_id_mut("event-a")
+        .file_by_id_mut("event-a")
         .unwrap()
         .component_with_mut(|c| c.uid() == "event-a")
         .unwrap()
         .set_summary(Some("Saved A".into()));
 
     store
-        .try_file_by_id_mut("event-b")
+        .file_by_id_mut("event-b")
         .unwrap()
         .component_with_mut(|c| c.uid() == "event-b")
         .unwrap()
@@ -259,6 +264,7 @@ fn save_persists_all_dirs() {
         make_id("dir-a"),
         tmp_a.path().to_path_buf(),
         "DirA".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -266,6 +272,7 @@ fn save_persists_all_dirs() {
         make_id("dir-b"),
         tmp_b.path().to_path_buf(),
         "DirB".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -300,6 +307,7 @@ fn switch_directory_success() {
         id_a.clone(),
         tmp_a.path().to_path_buf(),
         "DirA".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -307,6 +315,7 @@ fn switch_directory_success() {
         id_b.clone(),
         tmp_b.path().to_path_buf(),
         "DirB".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -345,6 +354,7 @@ fn switch_directory_old_dir_not_found() {
         id_b.clone(),
         tmp_b.path().to_path_buf(),
         "DirB".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -371,6 +381,7 @@ fn switch_directory_new_dir_not_found_restores_file() {
         id_a.clone(),
         tmp_a.path().to_path_buf(),
         "DirA".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -408,10 +419,11 @@ fn switch_directory_save_failure_rolls_back() {
         id_a.clone(),
         tmp_a.path().to_path_buf(),
         "DirA".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
-    let dir_b = CalDir::new_empty(id_b.clone(), nonexistent_path, "DirB".into());
+    let dir_b = CalDir::new_empty(id_b.clone(), nonexistent_path, "DirB".into(), false);
 
     let mut store = CalStore::default();
     store.add(dir_a);

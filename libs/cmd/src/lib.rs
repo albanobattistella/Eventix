@@ -230,7 +230,7 @@ async fn handle_import(state: EventixState, req: ImportOptions) -> anyhow::Resul
 
     // all good; add them to the directory
     for f in files {
-        dir.add_file(f);
+        dir.add_file(f).map_err(anyhow::Error::from)?;
     }
 
     Ok(Response::Success)
@@ -327,7 +327,12 @@ mod tests {
     /// backed by a real directory on disk so that `CalFile::save` can write to it.
     fn make_state_with_cal(xdg: BaseDirectories, cal_dir: &TempDir, cal_id: &str) -> EventixState {
         let id = Arc::new(cal_id.to_string());
-        let dir = CalDir::new_empty(id.clone(), cal_dir.path().to_path_buf(), cal_id.to_string());
+        let dir = CalDir::new_empty(
+            id.clone(),
+            cal_dir.path().to_path_buf(),
+            cal_id.to_string(),
+            false,
+        );
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -542,9 +547,14 @@ END:VCALENDAR\r\n",
             // Pre-populate the state with a file that has the same UID we will import.
             let cal_id = "test-cal";
             let id = Arc::new(cal_id.to_string());
-            let mut dir =
-                CalDir::new_empty(id.clone(), cal_tmp.path().to_path_buf(), cal_id.to_string());
-            dir.add_file(make_cal_file(cal_id, cal_tmp.path(), "replace-uid"));
+            let mut dir = CalDir::new_empty(
+                id.clone(),
+                cal_tmp.path().to_path_buf(),
+                cal_id.to_string(),
+                false,
+            );
+            dir.add_file(make_cal_file(cal_id, cal_tmp.path(), "replace-uid"))
+                .unwrap();
             let mut store = CalStore::default();
             store.add(dir);
 

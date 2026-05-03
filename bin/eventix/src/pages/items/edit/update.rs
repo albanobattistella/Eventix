@@ -206,7 +206,7 @@ fn action_update(
         let new_file = CalFile::new(calendar, path, cal);
         new_file.save()?;
 
-        dir.add_file(new_file);
+        dir.add_file(new_file).map_err(anyhow::Error::from)?;
 
         Some(uid.to_string())
     } else {

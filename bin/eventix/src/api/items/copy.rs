@@ -146,7 +146,7 @@ async fn run_copy(
         .save()
         .context(format!("Save copy of {} as {}", req.uid, new_uid))?;
 
-    dir_arc.add_file(new_file);
+    dir_arc.add_file(new_file).map_err(anyhow::Error::from)?;
 
     Ok(Json(Response {}))
 }

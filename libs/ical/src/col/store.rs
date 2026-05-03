@@ -123,9 +123,7 @@ impl CalStore {
             .ok_or_else(|| ColError::ComponentNotFound(uid_str.to_string()))?
             .id()
             .clone();
-        self.directory_mut(&dir)?
-            .file_by_id_mut(uid_str)
-            .ok_or_else(|| ColError::ComponentNotFound(uid_str.to_string()))
+        self.directory_mut(&dir)?.file_by_id_mut(uid_str)
     }
 
     /// Returns whether the directory with the given id is write-protected.
@@ -273,7 +271,7 @@ impl CalStore {
             Err(err) => {
                 // if that failed, store the file in the old directory again
                 file.save().unwrap();
-                self.directory_mut(old).unwrap().add_file(file);
+                self.directory_mut(old).unwrap().add_file(file).unwrap();
                 return Err(err);
             }
         };
@@ -286,10 +284,10 @@ impl CalStore {
             file.set_directory(old.clone());
             file.set_path(old_src.path().join(file.path().file_name().unwrap()));
             file.save().unwrap();
-            self.directory_mut(old).unwrap().add_file(file);
+            self.directory_mut(old).unwrap().add_file(file).unwrap();
             return Err(e);
         }
-        new_src.add_file(file);
+        new_src.add_file(file)?;
         Ok(())
     }
 
@@ -322,7 +320,7 @@ mod tests {
 
     /// Builds an empty in-memory [`CalDir`] with the given id.
     fn make_dir(id: &str) -> CalDir {
-        CalDir::new_empty(make_id(id), PathBuf::default(), id.to_string())
+        CalDir::new_empty(make_id(id), PathBuf::default(), id.to_string(), false)
     }
 
     /// Builds an in-memory [`CalFile`] containing a single event with the given UID.
@@ -381,11 +379,13 @@ mod tests {
             id_a.clone(),
             PathBuf::default(),
             "A".into(),
+            false,
         ));
         store.add(CalDir::new_empty(
             id_b.clone(),
             PathBuf::default(),
             "B".into(),
+            false,
         ));
 
         assert!(store.directory(&id_a).is_some());
@@ -406,12 +406,12 @@ mod tests {
         let mut store = CalStore::default();
 
         let mut dir_a = make_dir("a");
-        dir_a.add_file(make_event_file("uid-1"));
-        dir_a.add_file(make_event_file("uid-2"));
+        dir_a.add_file(make_event_file("uid-1")).unwrap();
+        dir_a.add_file(make_event_file("uid-2")).unwrap();
         store.add(dir_a);
 
         let mut dir_b = make_dir("b");
-        dir_b.add_file(make_event_file("uid-3"));
+        dir_b.add_file(make_event_file("uid-3")).unwrap();
         store.add(dir_b);
 
         let all_files: Vec<_> = store.files().collect();
@@ -425,11 +425,11 @@ mod tests {
         let mut store = CalStore::default();
 
         let mut dir_a = make_dir("a");
-        dir_a.add_file(make_event_file("uid-in-a"));
+        dir_a.add_file(make_event_file("uid-in-a")).unwrap();
         store.add(dir_a);
 
         let mut dir_b = make_dir("b");
-        dir_b.add_file(make_event_file("uid-in-b"));
+        dir_b.add_file(make_event_file("uid-in-b")).unwrap();
         store.add(dir_b);
 
         // file_by_id searches across all dirs
@@ -453,6 +453,7 @@ mod tests {
             id.clone(),
             PathBuf::default(),
             "Protected".into(),
+            false,
         ));
 
         let _guard = store.protect_directories(vec![id.clone()]).unwrap();
@@ -467,8 +468,8 @@ mod tests {
     fn file_by_id_mut_fails_for_write_protected_directory() {
         let mut store = CalStore::default();
         let id = make_id("protected");
-        let mut dir = CalDir::new_empty(id.clone(), PathBuf::default(), "Protected".into());
-        dir.add_file(make_event_file("uid-1"));
+        let mut dir = CalDir::new_empty(id.clone(), PathBuf::default(), "Protected".into(), false);
+        dir.add_file(make_event_file("uid-1")).unwrap();
         store.add(dir);
 
         let _guard = store.protect_directories(vec![id.clone()]).unwrap();
@@ -487,6 +488,7 @@ mod tests {
             id.clone(),
             PathBuf::default(),
             "Protected".into(),
+            false,
         ));
 
         let guard = store.protect_directories(vec![id.clone()]).unwrap();
@@ -505,9 +507,9 @@ mod tests {
         let mut store = CalStore::default();
 
         let mut dir = make_dir("mixed");
-        dir.add_file(make_event_file("ev-1"));
-        dir.add_file(make_event_file("ev-2"));
-        dir.add_file(make_todo_file("td-1"));
+        dir.add_file(make_event_file("ev-1")).unwrap();
+        dir.add_file(make_event_file("ev-2")).unwrap();
+        dir.add_file(make_todo_file("td-1")).unwrap();
         store.add(dir);
 
         assert_eq!(store.events().count(), 2);
@@ -533,7 +535,7 @@ mod tests {
         cal_a.add_component(CalComponent::Event(ev_a));
         let file_a = CalFile::new(Arc::default(), PathBuf::default(), cal_a);
         let mut dir_a = make_dir("a");
-        dir_a.add_file(file_a);
+        dir_a.add_file(file_a).unwrap();
 
         // Dir B: same address, but this time with a CN. The `contacts()` method must upgrade
         // the existing entry from the bare address to the human-readable name.
@@ -545,7 +547,7 @@ mod tests {
         cal_b.add_component(CalComponent::Event(ev_b));
         let file_b = CalFile::new(Arc::default(), PathBuf::default(), cal_b);
         let mut dir_b = make_dir("b");
-        dir_b.add_file(file_b);
+        dir_b.add_file(file_b).unwrap();
 
         let mut store = CalStore::default();
         store.add(dir_a);
@@ -571,7 +573,7 @@ mod tests {
         cal_a.add_component(CalComponent::Event(ev_a));
         let file_a = CalFile::new(Arc::default(), PathBuf::default(), cal_a);
         let mut dir_a = make_dir("a");
-        dir_a.add_file(file_a);
+        dir_a.add_file(file_a).unwrap();
 
         // Second file with the same address but no CN.
         let mut cal_b = Calendar::default();
@@ -580,7 +582,7 @@ mod tests {
         cal_b.add_component(CalComponent::Event(ev_b));
         let file_b = CalFile::new(Arc::default(), PathBuf::default(), cal_b);
         let mut dir_b = make_dir("b");
-        dir_b.add_file(file_b);
+        dir_b.add_file(file_b).unwrap();
 
         let mut store = CalStore::default();
         store.add(dir_a);

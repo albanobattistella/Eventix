@@ -23,6 +23,7 @@ pub struct CalDir {
     path: PathBuf,
     name: String,
     files: Vec<CalFile>,
+    read_only: bool,
 }
 
 impl Display for CalDir {
@@ -40,12 +41,13 @@ impl Eq for CalDir {}
 
 impl CalDir {
     /// Creates a new empty directory with the given path.
-    pub fn new_empty(id: Arc<String>, path: PathBuf, name: String) -> Self {
+    pub fn new_empty(id: Arc<String>, path: PathBuf, name: String, read_only: bool) -> Self {
         Self {
             id,
             path,
             name,
             files: vec![],
+            read_only,
         }
     }
 
@@ -61,6 +63,7 @@ impl CalDir {
         id: Arc<String>,
         path: PathBuf,
         name: String,
+        read_only: bool,
         local_tz: &Tz,
     ) -> Result<Self, ColError> {
         let mut files = Vec::new();
@@ -81,6 +84,7 @@ impl CalDir {
             path,
             name,
             files,
+            read_only,
         })
     }
 
@@ -204,8 +208,11 @@ impl CalDir {
     }
 
     /// Returns a mutable slice with all files in this directory.
-    pub fn files_mut(&mut self) -> &mut [CalFile] {
-        &mut self.files
+    pub fn files_mut(&mut self) -> Result<&mut [CalFile], ColError> {
+        if self.read_only {
+            return Err(ColError::DirWriteProtected((*self.id).clone()));
+        }
+        Ok(&mut self.files)
     }
 
     /// Returns a reference to the file that hosts the component with given uid.
@@ -215,14 +222,24 @@ impl CalDir {
     }
 
     /// Returns a mutable reference to the file that hosts the component with given uid.
-    pub fn file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Option<&mut CalFile> {
+    pub fn file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Result<&mut CalFile, ColError> {
+        if self.read_only {
+            return Err(ColError::DirWriteProtected((*self.id).clone()));
+        }
         let uid_ref = uid.as_ref();
-        self.files.iter_mut().find(|i| i.contains_uid(uid_ref))
+        self.files
+            .iter_mut()
+            .find(|i| i.contains_uid(uid_ref))
+            .ok_or_else(|| ColError::ComponentNotFound(uid_ref.to_string()))
     }
 
     /// Adds the given file to this directory.
-    pub fn add_file(&mut self, file: CalFile) {
+    pub fn add_file(&mut self, file: CalFile) -> Result<(), ColError> {
+        if self.read_only {
+            return Err(ColError::DirWriteProtected((*self.id).clone()));
+        }
         self.files.push(file);
+        Ok(())
     }
 
     /// Returns a vector of occurrences whose alarm is due in the given time period.
@@ -280,9 +297,10 @@ impl CalDir {
     /// If the containing file is empty afterwards, the file will be deleted. Otherwise, the file
     /// will just be saved.
     pub fn delete_by_uid<S: AsRef<str> + ToString>(&mut self, uid: S) -> Result<(), ColError> {
-        let file = self
-            .file_by_id_mut(&uid)
-            .ok_or_else(|| ColError::ComponentNotFound(uid.to_string()))?;
+        if self.read_only {
+            return Err(ColError::DirWriteProtected((*self.id).clone()));
+        }
+        let file = self.file_by_id_mut(&uid)?;
         file.delete_by_uid(uid);
         if file.components().is_empty() {
             let path = file.path().clone();
@@ -294,6 +312,9 @@ impl CalDir {
 
     /// Removes the [`CalFile`] from the collection that contains given uid.
     pub fn remove_by_uid<S: AsRef<str> + ToString>(&mut self, uid: S) -> Result<CalFile, ColError> {
+        if self.read_only {
+            return Err(ColError::DirWriteProtected((*self.id).clone()));
+        }
         let idx = self
             .files
             .iter()
@@ -303,6 +324,9 @@ impl CalDir {
     }
 
     pub(crate) fn remove_file(&mut self, path: &PathBuf) -> Result<CalFile, ColError> {
+        if self.read_only {
+            return Err(ColError::DirWriteProtected((*self.id).clone()));
+        }
         let idx = self
             .files
             .iter()
@@ -345,6 +369,7 @@ mod tests {
             Arc::new("id1".into()),
             PathBuf::from("/tmp"),
             "My Cal".into(),
+            false,
         );
         assert_eq!(format!("{dir}"), "My Cal");
     }
@@ -352,8 +377,18 @@ mod tests {
     #[test]
     fn partial_eq_same_name_and_files() {
         // Two dirs with the same name and no files are equal regardless of id/path.
-        let a = CalDir::new_empty(Arc::new("id".into()), PathBuf::from("/a"), "Work".into());
-        let b = CalDir::new_empty(Arc::new("id".into()), PathBuf::from("/b"), "Work".into());
+        let a = CalDir::new_empty(
+            Arc::new("id".into()),
+            PathBuf::from("/a"),
+            "Work".into(),
+            false,
+        );
+        let b = CalDir::new_empty(
+            Arc::new("id".into()),
+            PathBuf::from("/b"),
+            "Work".into(),
+            false,
+        );
         assert_eq!(a, b);
 
         // Different name makes them unequal even with no files.
@@ -361,6 +396,7 @@ mod tests {
             Arc::new("id".into()),
             PathBuf::from("/c"),
             "Personal".into(),
+            false,
         );
         assert_ne!(a, c);
     }
@@ -369,7 +405,7 @@ mod tests {
     fn new_empty_creates_empty_dir() {
         let id: Arc<String> = Arc::new("cal-id".into());
         let path = PathBuf::from("/some/path");
-        let dir = CalDir::new_empty(id.clone(), path.clone(), "Test".into());
+        let dir = CalDir::new_empty(id.clone(), path.clone(), "Test".into(), false);
 
         assert_eq!(dir.id(), &id);
         assert_eq!(dir.path(), &path);
@@ -379,38 +415,58 @@ mod tests {
 
     #[test]
     fn set_name_updates_name() {
-        let mut dir = CalDir::new_empty(Arc::new("id".into()), PathBuf::from("/tmp"), "Old".into());
+        let mut dir = CalDir::new_empty(
+            Arc::new("id".into()),
+            PathBuf::from("/tmp"),
+            "Old".into(),
+            false,
+        );
         dir.set_name("New".into());
         assert_eq!(dir.name(), "New");
     }
 
     #[test]
     fn files_mut_allows_mutation() {
-        let mut dir = CalDir::default();
-        dir.add_file(make_file("ev-x"));
+        let mut dir = CalDir::new_empty(
+            Arc::new("id".into()),
+            PathBuf::from("/tmp"),
+            "Old".into(),
+            false,
+        );
+        dir.add_file(make_file("ev-x")).unwrap();
         // files_mut must expose the same slice length.
-        assert_eq!(dir.files_mut().len(), 1);
+        assert_eq!(dir.files_mut().unwrap().len(), 1);
     }
 
     #[test]
     fn file_by_id_found_and_not_found() {
-        let mut dir = CalDir::default();
-        dir.add_file(make_file("uid-alpha"));
-        dir.add_file(make_file("uid-beta"));
+        let mut dir = CalDir::new_empty(
+            Arc::new("id".into()),
+            PathBuf::from("/tmp"),
+            "Old".into(),
+            false,
+        );
+        dir.add_file(make_file("uid-alpha")).unwrap();
+        dir.add_file(make_file("uid-beta")).unwrap();
 
         assert!(dir.file_by_id("uid-alpha").is_some());
         assert!(dir.file_by_id("uid-beta").is_some());
         assert!(dir.file_by_id("uid-missing").is_none());
 
-        assert!(dir.file_by_id_mut("uid-alpha").is_some());
-        assert!(dir.file_by_id_mut("uid-nope").is_none());
+        assert!(dir.file_by_id_mut("uid-alpha").is_ok());
+        assert!(dir.file_by_id_mut("uid-nope").is_err());
     }
 
     #[test]
     fn remove_by_uid_success_and_error() {
-        let mut dir = CalDir::default();
-        dir.add_file(make_file("uid-rm"));
-        dir.add_file(make_file("uid-keep"));
+        let mut dir = CalDir::new_empty(
+            Arc::new("id".into()),
+            PathBuf::from("/tmp"),
+            "Old".into(),
+            false,
+        );
+        dir.add_file(make_file("uid-rm")).unwrap();
+        dir.add_file(make_file("uid-keep")).unwrap();
 
         // Successful removal: returns the file and shrinks the collection.
         let removed = dir.remove_by_uid("uid-rm");

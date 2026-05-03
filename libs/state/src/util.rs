@@ -97,7 +97,12 @@ mod tests {
 
     /// Builds an in-memory [`CalDir`] with the given string id.
     fn make_dir(id: &str) -> CalDir {
-        CalDir::new_empty(Arc::new(id.to_string()), PathBuf::default(), id.to_string())
+        CalDir::new_empty(
+            Arc::new(id.to_string()),
+            PathBuf::default(),
+            id.to_string(),
+            false,
+        )
     }
 
     /// Builds a test [`State`] from a ready-made [`CalStore`] and [`Misc`].
@@ -121,7 +126,7 @@ mod tests {
     fn due_todos_includes_todo_with_due_in_window() {
         let todo = make_todo("uid-due", Some(future_due()));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -137,7 +142,7 @@ mod tests {
         // because its DUE date falls strictly before the window start.
         let todo = make_todo("uid-past-outside", Some(past_due()));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -151,7 +156,7 @@ mod tests {
         let mut todo = make_todo("uid-done", Some(future_due()));
         todo.set_status(Some(CalTodoStatus::Completed));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -164,7 +169,7 @@ mod tests {
     fn due_todos_excludes_disabled_calendar() {
         let todo = make_todo("uid-disabled", Some(future_due()));
         let mut dir = make_dir("disabled-cal");
-        dir.add_file(make_todo_file("disabled-cal", todo));
+        dir.add_file(make_todo_file("disabled-cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -194,7 +199,7 @@ mod tests {
         todo.set_rrule(Some(rrule));
 
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -206,7 +211,7 @@ mod tests {
         // now exclude it and ensure it's no longer found
         let todo = state
             .store_mut()
-            .try_file_by_id_mut("uid-excl")
+            .file_by_id_mut("uid-excl")
             .unwrap()
             .component_with_mut(|c| c.uid() == "uid-excl")
             .unwrap();
@@ -232,8 +237,8 @@ mod tests {
         todo_ip.set_status(Some(CalTodoStatus::InProcess));
 
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo_na));
-        dir.add_file(make_todo_file("cal", todo_ip));
+        dir.add_file(make_todo_file("cal", todo_na)).unwrap();
+        dir.add_file(make_todo_file("cal", todo_ip)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -248,7 +253,7 @@ mod tests {
     fn overdue_todos_includes_todo_with_past_due() {
         let todo = make_todo("uid-overdue", Some(past_due()));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -261,7 +266,7 @@ mod tests {
     fn overdue_todos_excludes_todo_with_future_due() {
         let todo = make_todo("uid-future", Some(future_due()));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -275,7 +280,7 @@ mod tests {
         let mut todo = make_todo("uid-done-overdue", Some(past_due()));
         todo.set_status(Some(CalTodoStatus::Completed));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -288,7 +293,7 @@ mod tests {
     fn overdue_todos_excludes_disabled_calendar() {
         let todo = make_todo("uid-disabled-overdue", Some(past_due()));
         let mut dir = make_dir("disabled-cal");
-        dir.add_file(make_todo_file("disabled-cal", todo));
+        dir.add_file(make_todo_file("disabled-cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -305,8 +310,8 @@ mod tests {
         let todo_a = make_todo("uid-ov-a", Some(past_due()));
         let todo_b = make_todo("uid-ov-b", Some(past_due()));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo_a));
-        dir.add_file(make_todo_file("cal", todo_b));
+        dir.add_file(make_todo_file("cal", todo_a)).unwrap();
+        dir.add_file(make_todo_file("cal", todo_b)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -329,8 +334,8 @@ mod tests {
         let todo_past = make_todo("uid-past", Some(past_due()));
         let todo_future = make_todo("uid-future", Some(future_due()));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo_past));
-        dir.add_file(make_todo_file("cal", todo_future));
+        dir.add_file(make_todo_file("cal", todo_past)).unwrap();
+        dir.add_file(make_todo_file("cal", todo_future)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -356,7 +361,7 @@ mod tests {
         let mut todo = CalTodo::new("uid-datedue");
         todo.set_due(Some(due_date));
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 
@@ -370,7 +375,7 @@ mod tests {
         // A todo without any DUE date has no end; occurrences_between skips it.
         let todo = make_todo("uid-noduedate", None);
         let mut dir = make_dir("cal");
-        dir.add_file(make_todo_file("cal", todo));
+        dir.add_file(make_todo_file("cal", todo)).unwrap();
         let mut store = CalStore::default();
         store.add(dir);
 

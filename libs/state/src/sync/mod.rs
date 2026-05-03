@@ -402,10 +402,19 @@ pub(crate) fn reload_collection_from_disk(
         return Ok(());
     };
 
+    let col_read_only = col.is_read_only();
     let local_tz = *state.timezone();
     let mut dirs = vec![];
     for (cal_id, cal) in col.calendars() {
-        let dir = State::load_calendar(state.xdg(), col_id, &col, cal_id, cal, &local_tz)?;
+        let dir = State::load_calendar(
+            state.xdg(),
+            col_id,
+            &col,
+            cal_id,
+            cal,
+            col_read_only,
+            &local_tz,
+        )?;
         dirs.push(dir);
     }
     for dir in dirs {

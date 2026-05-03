@@ -1065,25 +1065,30 @@ mod tests {
         dir.add_file(new_allday_file(
             NaiveDate::from_ymd_opt(2024, 10, 2).unwrap(),
             "yes1",
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_allday_file(
             NaiveDate::from_ymd_opt(2024, 10, 1).unwrap(),
             "yes2",
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_allday_file(
             // TODO 2024-10-31 does not work; what does DATE=... mean exactly? doesn't that have a
             // different meaning in different time zones?
             NaiveDate::from_ymd_opt(2024, 10, 30).unwrap(),
             "yes3",
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_allday_file(
             NaiveDate::from_ymd_opt(2023, 10, 31).unwrap(),
             "no1",
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_allday_file(
             NaiveDate::from_ymd_opt(2024, 9, 30).unwrap(),
             "no2",
-        ));
+        ))
+        .unwrap();
 
         let comps =
             dir.occurrences_between(new_date(2024, 10, 1), new_date(2024, 10, 31), |_| true);
@@ -1100,7 +1105,8 @@ mod tests {
                     CalCompType::Event.into(),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             EventBuilder::new("yes2")
                 .end(CalDate::Date(
@@ -1108,7 +1114,8 @@ mod tests {
                     CalCompType::Event.into(),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
 
         let tz = &chrono_tz::Europe::Berlin;
         let comps = dir.occurrences_between(new_date(1990, 1, 1), new_date(1990, 1, 31), |_| true);
@@ -1155,7 +1162,8 @@ mod tests {
         dir.add_file(new_allday_file(
             NaiveDate::from_ymd_opt(1990, 1, 4).unwrap(),
             "yes1",
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             EventBuilder::new("yes2")
                 .start(CalDate::Date(
@@ -1163,7 +1171,8 @@ mod tests {
                     CalCompType::Event.into(),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             EventBuilder::new("no1")
                 .start(CalDate::Date(
@@ -1171,7 +1180,8 @@ mod tests {
                     CalCompType::Event.into(),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             EventBuilder::new("no2")
                 .start(CalDate::Date(
@@ -1183,7 +1193,8 @@ mod tests {
                     CalCompType::Event.into(),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
 
         let tz = &chrono_tz::Europe::Berlin;
         let comps = dir.occurrences_between(new_date(1990, 1, 1), new_date(2000, 1, 31), |_| true);
@@ -1220,7 +1231,8 @@ mod tests {
                     CalCompType::Event.into(),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
 
         let occs = dir
             .occurrences_between(new_date(1990, 1, 1), new_date(1990, 1, 31), |_| true)
@@ -1247,7 +1259,8 @@ mod tests {
                     },
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             new_allday_event(NaiveDate::from_ymd_opt(1990, 1, 4).unwrap(), "id2")
                 .alarm(CalAlarm::new(
@@ -1258,7 +1271,8 @@ mod tests {
                     )),
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             new_allday_event(NaiveDate::from_ymd_opt(1990, 1, 5).unwrap(), "id3")
                 .alarm(CalAlarm::new(
@@ -1269,7 +1283,8 @@ mod tests {
                     },
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
 
         let overlay = DefaultAlarmOverlay;
         let alarms = dir
@@ -1306,7 +1321,8 @@ mod tests {
                     },
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
         dir.add_file(new_file(
             new_allday_event(NaiveDate::from_ymd_opt(1990, 1, 8).unwrap(), "id2")
                 .rrule("FREQ=WEEKLY".parse().unwrap())
@@ -1318,7 +1334,8 @@ mod tests {
                     },
                 ))
                 .done(),
-        ));
+        ))
+        .unwrap();
 
         let overlay = DefaultAlarmOverlay;
         let alarms = dir
@@ -1432,7 +1449,7 @@ mod tests {
                 ))
                 .done(),
         ));
-        dir.add_file(CalFile::new_simple(cal));
+        dir.add_file(CalFile::new_simple(cal)).unwrap();
 
         let overlay = DefaultAlarmOverlay;
         let alarms = dir
@@ -1551,7 +1568,7 @@ mod tests {
                 ))
                 .done(),
         ));
-        dir.add_file(CalFile::new_simple(cal));
+        dir.add_file(CalFile::new_simple(cal)).unwrap();
 
         // this includes the 6th, but this is overwritten to happen on the 4th, which is outside
         // the range
@@ -1594,7 +1611,7 @@ mod tests {
                 .rrule("FREQ=DAILY;COUNT=4".parse().unwrap())
                 .done(),
         ));
-        dir.add_file(CalFile::new_simple(cal));
+        dir.add_file(CalFile::new_simple(cal)).unwrap();
 
         let start = ny_datetime(2025, 3, 29, 0, 0, 0);
         let end = start + TimeDelta::days(7);
@@ -1641,7 +1658,7 @@ mod tests {
                 .rrule("FREQ=DAILY;COUNT=4".parse().unwrap())
                 .done(),
         ));
-        dir.add_file(CalFile::new_simple(cal));
+        dir.add_file(CalFile::new_simple(cal)).unwrap();
 
         let start = new_datetime(2025, 3, 29, 0, 0, 0);
         let end = start + TimeDelta::days(7);
@@ -1682,7 +1699,7 @@ mod tests {
                 .rrule("FREQ=DAILY;COUNT=4".parse().unwrap())
                 .done(),
         ));
-        dir.add_file(CalFile::new_simple(cal));
+        dir.add_file(CalFile::new_simple(cal)).unwrap();
 
         let start = new_datetime(2025, 3, 29, 0, 0, 0);
         let end = start + TimeDelta::days(7);

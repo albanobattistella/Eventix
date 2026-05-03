@@ -79,7 +79,7 @@ where
     let file = CalFile::new(calendar.clone(), path, cal);
     file.save()?;
 
-    dir.add_file(file);
+    dir.add_file(file).map_err(anyhow::Error::from)?;
 
     // remember the last used calendar
     let misc = state.misc_mut();
