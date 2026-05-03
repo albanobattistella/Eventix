@@ -289,6 +289,8 @@ impl State {
         // on it.
         let organizer = col.build_organizer();
         if let Some(organizer) = organizer
+            // we skip read-only collections here, but that's okay, because if it's read-only being
+            // the organizer would not help us to do any changes anyway.
             && let Ok(files) = dir.files_mut()
         {
             for comp in files.iter_mut().flat_map(|f| {
