@@ -124,8 +124,8 @@ impl Page {
         self.debug
     }
 
-    pub fn git_hash(&self) -> &str {
-        &env!("GIT_HASH")[..7]
+    pub fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
     }
 
     pub fn last_reload(&self, locale: &Arc<dyn Locale + Send + Sync>) -> DateTime<Tz> {

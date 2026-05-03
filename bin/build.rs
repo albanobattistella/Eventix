@@ -3,41 +3,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::fs::File;
-use std::io::Read;
 use std::io::Write;
 use std::path::Path;
-use std::process::Command;
 use std::{env, fs};
 
 fn main() {
-    let output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .expect("git rev-parse HEAD");
-    let git_hash = String::from_utf8(output.stdout)
-        .expect("Invalid UTF-8 in git output")
-        .trim()
-        .to_string();
-    println!("cargo:rustc-env=GIT_HASH={git_hash}");
-
-    let manifest_dir = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).to_path_buf();
-    let workspace_root = fs::canonicalize(manifest_dir.join("../.."))
-        .expect("Failed to canonicalize workspace root");
-    let git_dir = workspace_root.join(".git");
-    let git_head = git_dir.join("HEAD");
-    println!("cargo:rerun-if-changed={}", git_head.display());
-
-    let mut head = String::new();
-    File::open(&git_head)
-        .and_then(|mut file| file.read_to_string(&mut head))
-        .expect("Failed to read .git/HEAD");
-    if let Some(reference) = head.strip_prefix("ref: ") {
-        println!(
-            "cargo:rerun-if-changed={}",
-            git_dir.join(reference.trim()).display()
-        );
-    }
-
     let app_id = if env::var("PROFILE").unwrap() == "debug" {
         "com.github.hrniels.Eventix-debug"
     } else {

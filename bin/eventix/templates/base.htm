@@ -31,7 +31,6 @@
         <script type="text/javascript" src="/generated/bundle.js"></script>
         <script type="text/javascript">
             trackActivity();
-            syncAllEvery(1000 * 5 * 60, "last-update", "sync-spinner", "out-of-sync");
 
             const startDay = curUTCDay();
             setInterval(function () {
@@ -150,7 +149,7 @@
             <div class="ev_padtop ev_border">
                 <div class="ev_main">
                     <div style="float: right;">
-                        Eventix #{{ page.git_hash() }} &nbsp;&mdash;&nbsp;
+                        Eventix v{{ page.version() }} &nbsp;&mdash;&nbsp;
                         {% if locale.ty() == eventix_locale::LocaleType::German %}
                             <a href="javascript:setLang('English')"> 🇬🇧</a>
                         {% else %}
