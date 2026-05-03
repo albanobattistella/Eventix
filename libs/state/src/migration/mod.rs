@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::Context;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::fs;
 use std::path::PathBuf;
@@ -33,7 +34,8 @@ pub fn migrate_if_needed(path: &PathBuf) -> anyhow::Result<()> {
         .unwrap_or_default();
     // ignore previously created backup files (this is okay, because although alarms are stored as
     // <cal-id>.toml, the calendar id is a generated uuid).
-    if Regex::new(r"\.v\d+\.toml$").unwrap().is_match(filename) {
+    static BACKUP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\.v\d+\.toml$").unwrap());
+    if BACKUP_RE.is_match(filename) {
         return Ok(());
     }
 
