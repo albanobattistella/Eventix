@@ -28,6 +28,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
+            dbus-x11 \
             flatpak \
             flatpak-builder \
             python3 \
@@ -41,7 +42,15 @@ jobs:
       - name: Install flathub-build tool
         run: |
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.flatpak.Builder
+          flatpak install --user -y flathub \
+            org.flatpak.Builder \
+            org.gnome.Sdk//50 \
+            org.freedesktop.Sdk.Extension.openjdk//25.08
+
+      - name: Start dbus
+        run: |
+          eval $(dbus-launch --sh-syntax)
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
 
       - name: Build Flatpak bundle
         run: ./b flatpak

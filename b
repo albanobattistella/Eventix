@@ -259,10 +259,11 @@ def cmd_format_check(args):
 
 def cmd_flatpak(args):
     """Builds a Flatpak package for Eventix, including dependencies."""
-    build_dir = Path("flatpak/build")
+    state_dir = Path("flatpak/state")
     repo_dir = Path("flatpak/repo")
     pydeps_dir = Path("flatpak/python-deps")
     javadeps_dir = Path("flatpak/java-deps")
+    sdk_id = "org.gnome.Sdk//50"
 
     # download vdirsyncer dependencies
     rt_deps = ["vdirsyncer"]
@@ -278,12 +279,24 @@ def cmd_flatpak(args):
         "--abi", "cp313",
     ], check=True)
 
-    # build davmail first online to get dependencies
+    # prevent question of whether to install it into system or user
+    user_flag = ["--user"] if (Path.home() / ".local/share/flatpak/runtime/org.gnome.Sdk/x86_64/50").exists() else []
+    # build DavMail with the same Maven shipped in the Flatpak SDK so the vendored repository
+    # matches the later offline build environment.
     subprocess.run([
-        "mvn",
-        "install",
-        "-Dmaven.repo.local=" + str(javadeps_dir.absolute()),
-    ], cwd="contrib/davmail", check=True)
+        "flatpak",
+        "run",
+        *user_flag,
+        "--command=sh",
+        "--share=network",
+        "--filesystem=" + str(Path.cwd()),
+        sdk_id,
+        "-c",
+        "export PATH=/usr/lib/sdk/openjdk/bin:$PATH && "
+        "export JAVA_HOME=/usr/lib/sdk/openjdk && "
+        "cd contrib/davmail && "
+        "mvn install -Dmaven.repo.local=../../flatpak/java-deps",
+    ], check=True)
 
     # Ensure cargo-sources.json is up to date
     venv_bin = PY_VENV / "bin"
@@ -313,8 +326,9 @@ def cmd_flatpak(args):
     # build everything (without network access)
     subprocess.run([
         "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
-        "--state-dir=" + str(build_dir),
+        "--state-dir=" + str(state_dir),
         "--repo=" + str(repo_dir),
+        "--delete-build-dirs",
         "flatpak/" + APP_ID + ".json",
     ], check=True)
 
@@ -322,6 +336,9 @@ def cmd_flatpak(args):
     subprocess.run([
         "flatpak", "build-bundle", str(repo_dir), "flatpak/Eventix.flatpak", APP_ID
     ], check=True)
+
+    # remove builddir; apparently we cannot control where that's stored
+    shutil.rmtree("builddir", ignore_errors=True)
 
     print()
     print("Flatpak ready. You can install it via:")

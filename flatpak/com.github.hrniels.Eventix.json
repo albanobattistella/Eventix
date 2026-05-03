@@ -34,7 +34,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "path": "source.tar.gz"
+                    "path": "source.tar.gz",
+                    "strip-components": 1
                 },
                 "cargo-sources.json"
             ],
@@ -63,7 +64,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "path": "source.tar.gz"
+                    "path": "source.tar.gz",
+                    "strip-components": 1
                 }
             ]
         },
@@ -101,7 +103,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "path": "source.tar.gz"
+                    "path": "source.tar.gz",
+                    "strip-components": 1
                 }
             ]
         },
@@ -140,7 +143,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "path": "source.tar.gz"
+                    "path": "source.tar.gz",
+                    "strip-components": 1
                 }
             ]
         },
