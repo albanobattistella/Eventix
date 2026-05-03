@@ -24,15 +24,35 @@
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
         "env": {
-            "CARGO_HOME": "/run/build/eventix/cargo"
-        },
-        "build-args": ["--share=network"]
+            "CARGO_HOME": "/app/cargo-home",
+            "CARGO_NET_OFFLINE": "true"
+        }
     },
     "modules": [
+        {
+            "name": "cargo-vendor",
+            "sources": [
+                {
+                    "type": "archive",
+                    "path": "source.tar.gz"
+                },
+                "cargo-sources.json"
+            ],
+            "buildsystem": "simple",
+            "build-commands": [
+                "mkdir -p /app/cargo-vendor",
+                "cp -r cargo/vendor/. /app/cargo-vendor/"
+            ]
+        },
         {
             "name": "Eventix-build",
             "buildsystem": "simple",
             "build-commands": [
+                "mkdir -p .cargo",
+                "echo '[source.crates-io]' > .cargo/config.toml",
+                "echo 'replace-with = \"vendored-sources\"' >> .cargo/config.toml",
+                "echo '[source.vendored-sources]' >> .cargo/config.toml",
+                "echo 'directory = \"/app/cargo-vendor\"' >> .cargo/config.toml",
                 "cargo build --release",
                 "mkdir -p /app/build-artifacts",
                 "cp target/release/eventix /app/build-artifacts/",
@@ -43,8 +63,7 @@
             "sources": [
                 {
                     "type": "archive",
-                    "path": "../flatpak/source.tar.gz",
-                    "strip-components": 0
+                    "path": "source.tar.gz"
                 }
             ]
         },
@@ -57,43 +76,43 @@
                 "install -Dm755 /app/build-artifacts/eventix-import -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-keyring -t /app/bin/",
                 "rm -rf /app/build-artifacts",
-                "install -Dm644 com.github.hrniels.Eventix.desktop -t /app/share/applications/",
-                "install -Dm644 com.github.hrniels.Eventix-Import.desktop -t /app/share/applications/",
-                "install -Dm644 icons/scalable.svg /app/share/icons/hicolor/scalable/apps/com.github.hrniels.Eventix.svg",
-                "install -Dm644 icons/256x256.png /app/share/icons/hicolor/256x256/apps/com.github.hrniels.Eventix.png",
-                "install -Dm644 icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.github.hrniels.Eventix.png",
-                "install -Dm644 icons/64x64.png /app/share/icons/hicolor/64x64/apps/com.github.hrniels.Eventix.png",
-                "install -Dm644 icons/48x48.png /app/share/icons/hicolor/48x48/apps/com.github.hrniels.Eventix.png",
-                "install -Dm644 icons/index.theme /app/share/icons/hicolor/index.theme",
-                "install -Dm644 com.github.hrniels.Eventix.metainfo.xml -t /app/share/metainfo/",
+                "install -Dm644 flatpak/com.github.hrniels.Eventix.desktop -t /app/share/applications/",
+                "install -Dm644 flatpak/com.github.hrniels.Eventix-Import.desktop -t /app/share/applications/",
+                "install -Dm644 data/icons/scalable.svg /app/share/icons/hicolor/scalable/apps/com.github.hrniels.Eventix.svg",
+                "install -Dm644 data/icons/256x256.png /app/share/icons/hicolor/256x256/apps/com.github.hrniels.Eventix.png",
+                "install -Dm644 data/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.github.hrniels.Eventix.png",
+                "install -Dm644 data/icons/64x64.png /app/share/icons/hicolor/64x64/apps/com.github.hrniels.Eventix.png",
+                "install -Dm644 data/icons/48x48.png /app/share/icons/hicolor/48x48/apps/com.github.hrniels.Eventix.png",
+                "install -Dm644 data/icons/index.theme /app/share/icons/hicolor/index.theme",
+                "install -Dm644 flatpak/com.github.hrniels.Eventix.metainfo.xml -t /app/share/metainfo/",
                 "mkdir -p /app/share/com.github.hrniels.Eventix/locale",
                 "mkdir -p /app/share/com.github.hrniels.Eventix/static",
                 "mkdir -p /app/share/com.github.hrniels.Eventix/icons",
-                "cp -r locale /app/share/com.github.hrniels.Eventix",
-                "cp -r static /app/share/com.github.hrniels.Eventix",
-                "cp -r icons /app/share/com.github.hrniels.Eventix",
-                "gtk-update-icon-cache /app/share/icons/hicolor"
+                "cp -r data/locale /app/share/com.github.hrniels.Eventix",
+                "cp -r data/static /app/share/com.github.hrniels.Eventix",
+                "cp -r data/icons /app/share/com.github.hrniels.Eventix",
+                "gtk-update-icon-cache /app/share/icons/hicolor",
+                "rm -rf /app/cargo-vendor",
+                "rm -rf /app/cargo-home"
             ],
             "sources": [
                 {
-                    "type": "dir",
-                    "path": "../data"
-                },
-                {
-                    "type": "dir",
-                    "path": "../flatpak"
+                    "type": "archive",
+                    "path": "source.tar.gz"
                 }
             ]
         },
         {
             "name": "vdirsyncer",
             "buildsystem": "simple",
-            "build-commands": ["pip3 install --prefix=/app contrib/vdirsyncer"],
+            "build-commands": [
+                "pip3 install --no-index --find-links=flatpak/python-deps --prefix=/app contrib/vdirsyncer"
+            ],
             "sources": [
                 {
                     "type": "archive",
-                    "path": "../flatpak/source.tar.gz",
-                    "strip-components": 0
+                    "path": "source.tar.gz",
+                    "strip-components": 1
                 }
             ]
         },
@@ -108,8 +127,8 @@
             },
             "build-commands": [
                 "export PATH=/usr/lib/sdk/openjdk/bin:$PATH",
-                "cd contrib/davmail && mvn install -Dmaven.repo.local=$PWD/.m2",
-                "cd contrib/davmail && ant dist",
+                "cd contrib/davmail && mvn --offline install -Dmaven.repo.local=/run/build/davmail/flatpak/java-deps",
+                "cd contrib/davmail && ant prepare-dist",
                 "install -Dm755 contrib/davmail/dist/davmail /app/bin/davmail",
                 "install -D contrib/davmail/dist/davmail.jar /app/bin/davmail.jar",
                 "mkdir -p /app/bin/lib",
@@ -118,8 +137,7 @@
             "sources": [
                 {
                     "type": "archive",
-                    "path": "../flatpak/source.tar.gz",
-                    "strip-components": 0
+                    "path": "source.tar.gz"
                 }
             ]
         },
@@ -128,10 +146,16 @@
             "buildsystem": "simple",
             "build-commands": [
                 "mkdir -p /app/openjdk",
-                "curl -L https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9+9/OpenJDK17U-jre_x64_linux_hotspot_17.0.9_9.tar.gz | tar xz -C /app/openjdk --strip-components=1",
+                "tar xzf OpenJDK17U-jre_x64_linux_hotspot_17.0.9_9.tar.gz -C /app/openjdk --strip-components=1",
                 "ln -s /app/openjdk/bin/java /app/bin/java"
             ],
-            "sources": []
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9+9/OpenJDK17U-jre_x64_linux_hotspot_17.0.9_9.tar.gz",
+                    "sha256": "c37f729200b572884b8f8e157852c739be728d61d9a1da0f920104876d324733"
+                }
+            ]
         }
     ]
 }

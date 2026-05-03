@@ -15,6 +15,8 @@ import tempfile
 APP_ID = "com.github.hrniels.Eventix"
 APP_ID_DEBUG = APP_ID + "-debug"
 
+PY_VENV = Path("run/venv")
+
 
 def dev_env():
     """Sets up the development environment by configuring environment variables
@@ -41,11 +43,11 @@ def dev_env():
     davmail_bin = os.path.abspath("contrib/davmail/dist")
     if not os.path.isfile(davmail_bin + "/davmail"):
         sys.exit("Please install davmail first via ./b davmail")
-    vdirsyncer_bin = os.path.abspath("run/venv/bin")
-    if not os.path.isfile(vdirsyncer_bin + "/vdirsyncer"):
+    vdirsyncer_bin = PY_VENV / "bin"
+    if not os.path.isfile(vdirsyncer_bin / "vdirsyncer"):
         sys.exit("Please install vdirsyncer first via ./b vdirsyncer")
     eventix_bin = os.path.abspath("target/debug")
-    env["PATH"] = os.pathsep.join([davmail_bin, vdirsyncer_bin, eventix_bin, env.get("PATH", "")])
+    env["PATH"] = os.pathsep.join([davmail_bin, str(vdirsyncer_bin.absolute()), eventix_bin, env.get("PATH", "")])
     # use a project-local directory for data and config
     env["XDG_DATA_HOME"] = str(run_dir.absolute())
     env["XDG_CONFIG_HOME"] = str(run_dir.absolute())
@@ -119,8 +121,8 @@ def cmd_davmail(args):
 
 def cmd_vdirsyncer(args):
     """Builds vdirsyncer using venv and pip."""
-    subprocess.run(["python", "-m", "venv", "run/venv"])
-    subprocess.run(["run/venv/bin/pip", "install", "-e", "contrib/vdirsyncer"])
+    subprocess.run(["python", "-m", "venv", str(PY_VENV)])
+    subprocess.run([str(PY_VENV / "bin/pip"), "install", "-e", "contrib/vdirsyncer"])
 
 
 def cmd_test(args):
@@ -257,38 +259,68 @@ def cmd_format_check(args):
 
 def cmd_flatpak(args):
     """Builds a Flatpak package for Eventix, including dependencies."""
-    build_dir = "flatpak/build"
-    repo_dir = "flatpak/repo"
+    build_dir = Path("flatpak/build")
+    repo_dir = Path("flatpak/repo")
+    pydeps_dir = Path("flatpak/python-deps")
+    javadeps_dir = Path("flatpak/java-deps")
+
+    # download vdirsyncer dependencies
+    rt_deps = ["vdirsyncer"]
+    build_deps = ["setuptools", "setuptools_scm", "wheel", "tenacity"]
+    subprocess.run([
+        "pip3", "download",
+        *rt_deps, *build_deps,
+        "--dest", str(pydeps_dir),
+        "--python-version", "3.13",
+        "--only-binary=:all:",
+        "--platform", "manylinux_2_28_x86_64",
+        "--implementation", "cp",
+        "--abi", "cp313",
+    ], check=True)
+
+    # build davmail first online to get dependencies
+    subprocess.run([
+        "mvn",
+        "install",
+        "-Dmaven.repo.local=" + str(javadeps_dir.absolute()),
+    ], cwd="contrib/davmail", check=True)
+
+    # Ensure cargo-sources.json is up to date
+    venv_bin = PY_VENV / "bin"
+    subprocess.run(["python", "-m", "venv", str(PY_VENV)])
+    subprocess.run([venv_bin / "pip", "install", "aiohttp", "tomlkit"], check=True)
+    subprocess.run([
+        str(venv_bin / "python"), "contrib/flatpak-cargo-generator.py",
+        "Cargo.lock", "-o", "flatpak/cargo-sources.json"
+    ], check=True)
 
     # generate archive for flatpak JSON
     subprocess.run([
         "tar", "czf", "flatpak/source.tar.gz",
         "--exclude=contrib/davmail/dist",
+        # put everything into a subdirectory
+        "--transform=s#^#eventix/#",
         # include .git for GIT_HASH and submodule version metadata
-        ".git", "bin", "contrib", "data", "libs", "Cargo.toml", "Cargo.lock"
-    ])
-
-    # install flatpak dependencies
-    runtimes = [
-        "org.gnome.Platform//50",
-        "org.gnome.Sdk//50",
-        "org.freedesktop.Sdk.Extension.rust-stable//25.08",
-        "org.freedesktop.Sdk.Extension.openjdk//25.08"
-    ]
-    for runtime in runtimes:
-        subprocess.run(["flatpak", "install", "-y", "flathub", runtime], check=True)
-
-    # build flatpak
-    add_args = ["--disable-cache"] if not args.no_rebuild else []
-    subprocess.run(
-        ["flatpak-builder", "--disable-rofiles-fuse", "--force-clean"] + add_args +
-        [build_dir, "flatpak/{}.json".format(APP_ID)],
-        check=True)
-    subprocess.run([
-        "flatpak", "build-export", repo_dir, build_dir
+        ".git", "bin", "contrib", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json",
+        # include the files for flatpak building
+        "flatpak/" + APP_ID + "-Import.desktop",
+        "flatpak/" + APP_ID + ".desktop",
+        "flatpak/" + APP_ID + ".metainfo.xml",
+        str(pydeps_dir),
+        str(javadeps_dir),
     ], check=True)
+
+    # build everything (without network access)
     subprocess.run([
-        "flatpak", "build-bundle", repo_dir, "flatpak/Eventix.flatpak", APP_ID
+        "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
+        "--state-dir=" + str(build_dir),
+        "--repo=" + str(repo_dir),
+        "flatpak/" + APP_ID + ".json",
+    ], check=True)
+
+    # create flatpak package
+    subprocess.run([
+        "flatpak", "build-bundle", str(repo_dir), "flatpak/Eventix.flatpak", APP_ID
     ], check=True)
 
     print()
@@ -353,8 +385,6 @@ def main():
 
     flatpak_parser = subparsers.add_parser(
         "flatpak", parents=[parent_parser], help="Build flatpak package")
-    flatpak_parser.add_argument("--no-rebuild", help="Skip build step, just repackage",
-                                action="store_true")
     flatpak_parser.set_defaults(func=cmd_flatpak)
 
     format_parser = subparsers.add_parser(
