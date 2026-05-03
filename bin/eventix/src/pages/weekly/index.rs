@@ -18,6 +18,7 @@ use std::{collections::HashMap, fmt, sync::Arc};
 use crate::comps::occurrence::{OccurrenceMode, OccurrenceTemplate};
 use crate::html::filters;
 use crate::objects::{DayOccurrence, OccurrenceOverlap};
+use crate::pages::Page;
 use crate::pages::error::HTMLError;
 use crate::util::parse_human_date;
 
@@ -46,6 +47,7 @@ pub struct Request {
 #[derive(Template)]
 #[template(path = "pages/weekly.htm")]
 struct WeeklyTemplate {
+    page: Page,
     locale: Arc<dyn Locale + Send + Sync>,
     days: Vec<Day>,
     today: NaiveDate,
@@ -161,6 +163,7 @@ pub async fn content(
     State(state): State<EventixState>,
     Query(req): Query<Request>,
 ) -> Result<impl IntoResponse, HTMLError> {
+    let page = Page::new(&state).await;
     let locale = state.lock().await.locale();
     let timezone = *locale.timezone();
     let now = Local::now().with_timezone(&timezone);
@@ -275,6 +278,7 @@ pub async fn content(
     }
 
     let html = WeeklyTemplate {
+        page,
         locale: locale.clone(),
         week_number: week_start.format("%V").to_string(),
         week_start: locale.fmt_weekdate(&week_start, DateFlags::NoToday),

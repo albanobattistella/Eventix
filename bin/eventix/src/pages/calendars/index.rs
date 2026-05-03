@@ -133,7 +133,7 @@ pub async fn content(State(state): State<EventixState>) -> Result<impl IntoRespo
         .settings()
         .collections()
         .iter()
-        .filter(|(_, col)| !col.syncer().is_read_only() && col.syncer().supports_mkrm())
+        .filter(|(_, col)| !col.is_read_only() && col.syncer().supports_mkrm())
         .map(|(col_id, _)| ComboOption::new(col_id, col_id.clone()))
         .collect::<Vec<_>>();
 

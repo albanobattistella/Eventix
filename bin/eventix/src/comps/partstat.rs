@@ -19,6 +19,7 @@ pub struct PartStatTemplate {
     rid: Option<String>,
     prefix: String,
     recurrent: bool,
+    read_only: bool,
 }
 
 impl PartStatTemplate {
@@ -29,6 +30,7 @@ impl PartStatTemplate {
         uid: String,
         rid: Option<String>,
         recurrent: bool,
+        read_only: bool,
     ) -> Self {
         let prefix = if recurrent && rid.is_some() {
             locale.translate("(Occ.)")
@@ -46,6 +48,7 @@ impl PartStatTemplate {
             rid,
             prefix,
             recurrent,
+            read_only,
         }
     }
 }

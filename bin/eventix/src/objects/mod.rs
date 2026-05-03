@@ -64,7 +64,7 @@ where
 
     let dir = state
         .store_mut()
-        .try_directory_mut(&calendar)
+        .directory_mut(&calendar)
         .map_err(anyhow::Error::from)?;
 
     let mut path = dir.path().clone();
@@ -79,7 +79,7 @@ where
     let file = CalFile::new(calendar.clone(), path, cal);
     file.save()?;
 
-    dir.add_file(file);
+    dir.add_file(file).map_err(anyhow::Error::from)?;
 
     // remember the last used calendar
     let misc = state.misc_mut();

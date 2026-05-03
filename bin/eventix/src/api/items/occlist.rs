@@ -61,6 +61,7 @@ struct ListOccurrence<'a> {
     edit_modes: EditModesTemplate,
     partstat: Option<PartStatTemplate>,
     owner: bool,
+    read_only: bool,
 }
 
 impl<'a> ListOccurrence<'a> {
@@ -70,8 +71,15 @@ impl<'a> ListOccurrence<'a> {
         alarm_type: &CalendarAlarmType,
         pers_alarms: &PersonalAlarms,
         user_mail: Option<&String>,
+        read_only: bool,
     ) -> Self {
-        let occ = DayOccurrence::new(occ, None, false, pers_alarms.has_alarms(occ, alarm_type));
+        let occ = DayOccurrence::new(
+            occ,
+            None,
+            false,
+            read_only,
+            pers_alarms.has_alarms(occ, alarm_type),
+        );
 
         let owner = occ.is_owned_by(user_mail);
         let partstat = match (user_mail, owner) {
@@ -83,6 +91,7 @@ impl<'a> ListOccurrence<'a> {
                     occ.uid().clone(),
                     Some(occ.rid_str()),
                     false,
+                    read_only,
                 )
             }),
             _ => None,
@@ -98,6 +107,7 @@ impl<'a> ListOccurrence<'a> {
             ),
             occ,
             owner,
+            read_only,
         }
     }
 }
@@ -189,6 +199,7 @@ pub async fn handler(
     let alarm_type = cal_settings.alarms();
     let pers_alarms = state.personal_alarms();
     let user_mail = col_settings.email().map(|e| e.address());
+    let read_only = col_settings.is_read_only();
 
     let more = occs.len() > req.count;
     let occs: Vec<_> = match req.dir {
@@ -202,6 +213,7 @@ pub async fn handler(
                     alarm_type,
                     pers_alarms,
                     user_mail.as_ref(),
+                    read_only,
                 )
             })
             .collect(),
@@ -215,6 +227,7 @@ pub async fn handler(
                     alarm_type,
                     pers_alarms,
                     user_mail.as_ref(),
+                    read_only,
                 )
             })
             .collect(),

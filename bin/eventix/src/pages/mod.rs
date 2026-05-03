@@ -50,6 +50,8 @@ pub struct Page {
     quickcals: Option<CalComboTemplate>,
     last_reload: NaiveDateTime,
     debug: bool,
+    any_writable_events: bool,
+    any_writable_tasks: bool,
 }
 
 impl Default for Page {
@@ -61,6 +63,8 @@ impl Default for Page {
             quickcals: None,
             last_reload: NaiveDateTime::default(),
             debug: cfg!(debug_assertions),
+            any_writable_events: false,
+            any_writable_tasks: false,
         }
     }
 }
@@ -73,16 +77,28 @@ impl Page {
             Some(cal) => cal.clone(),
             None => String::new(),
         });
-        let calendars = Calendars::new(&state, |_id, settings| {
-            settings.types().contains(&CalCompType::Todo)
+        let todo_calendars = Calendars::new(&state, |id, settings| {
+            let (col, _) = state.settings().calendar(id).unwrap();
+            !col.is_read_only() && settings.types().contains(&CalCompType::Todo)
         });
 
+        let all_calendars = Calendars::new(&state, |_id, _settings| true);
+        let any_writable_events = all_calendars.0.iter().any(|c| {
+            !c.read_only
+                && state
+                    .settings()
+                    .calendar(&c.id)
+                    .map(|(_, s)| s.types().contains(&CalCompType::Event))
+                    .unwrap_or(false)
+        });
+        let any_writable_tasks = !todo_calendars.0.is_empty();
+
         Self {
-            calendars: Calendars::new(&state, |_id, _settings| true),
-            quickcals: if !calendars.0.is_empty() {
+            calendars: all_calendars,
+            quickcals: if any_writable_tasks {
                 Some(CalComboTemplate::new(
                     "quicktodo_calendar",
-                    calendars,
+                    todo_calendars,
                     calendar,
                     true,
                 ))
@@ -90,16 +106,26 @@ impl Page {
                 None
             },
             last_reload: state.last_reload(),
+            any_writable_events,
+            any_writable_tasks,
             ..Default::default()
         }
+    }
+
+    pub fn any_writable_events(&self) -> bool {
+        self.any_writable_events
+    }
+
+    pub fn any_writable_tasks(&self) -> bool {
+        self.any_writable_tasks
     }
 
     pub fn debug(&self) -> bool {
         self.debug
     }
 
-    pub fn git_hash(&self) -> &str {
-        &env!("GIT_HASH")[..7]
+    pub fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
     }
 
     pub fn last_reload(&self, locale: &Arc<dyn Locale + Send + Sync>) -> DateTime<Tz> {

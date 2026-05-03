@@ -107,7 +107,7 @@ async fn run_addcal(state: &mut eventix_state::State, req: Params) -> anyhow::Re
             .collections_mut()
             .get_mut(&req.col_id)
             .ok_or_else(|| anyhow!("No collection '{}'", &req.col_id))?;
-        if col.syncer().is_read_only() {
+        if col.is_syncer_read_only() {
             return Err(anyhow!("Collection '{}' is read-only", &req.col_id));
         }
         let col_path = col.path(&xdg, &req.col_id);

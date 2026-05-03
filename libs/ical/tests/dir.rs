@@ -33,6 +33,7 @@ fn new_from_dir_loads_ics_files() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -50,6 +51,7 @@ fn new_from_dir_empty_dir() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -73,6 +75,7 @@ fn new_from_dir_skips_non_ics_and_subdirectories() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -87,6 +90,7 @@ fn new_from_dir_nonexistent_path_returns_error() {
         make_id("cal"),
         PathBuf::from("/nonexistent/path/that/does/not/exist"),
         "Test".into(),
+        false,
         &Tz::UTC,
     );
 
@@ -106,6 +110,7 @@ fn rescan_for_additions_detects_new_file() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -139,6 +144,7 @@ fn rescan_files_reloads_changed_file() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -195,6 +201,7 @@ fn rescan_for_deletions_detects_removed_file() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -228,6 +235,7 @@ fn delete_by_uid_removes_component_and_file_from_disk() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -253,6 +261,7 @@ fn delete_by_uid_saves_file_when_not_empty() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -270,6 +279,7 @@ fn delete_by_uid_saves_file_when_not_empty() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -286,6 +296,7 @@ fn delete_by_uid_not_found_returns_error() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -307,6 +318,7 @@ fn save_persists_mutations_to_disk() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();
@@ -326,6 +338,7 @@ fn save_persists_mutations_to_disk() {
         make_id("cal"),
         tmp.path().to_path_buf(),
         "Test".into(),
+        false,
         &Tz::UTC,
     )
     .unwrap();

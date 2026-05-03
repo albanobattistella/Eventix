@@ -100,7 +100,7 @@
                             </a>
                         </div>
                     {% else if remote_collection() %}
-                        {% if !col.syncer().is_read_only()  && col.syncer().supports_mkrm() %}
+                        {% if !col.is_read_only()  && col.syncer().supports_mkrm() %}
                             <div class="ev_cal_box_right_item">
                                 <a
                                     class="ev_button ev_button_critical"

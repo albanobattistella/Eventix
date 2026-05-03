@@ -55,7 +55,7 @@ async fn run_copy(
     let (dir, mut cal, mut new_comp) = {
         let file = state
             .store_mut()
-            .try_file_by_id_mut(&req.uid)
+            .file_by_id_mut(&req.uid)
             .context(format!("Unable to find component with uid '{}'", req.uid))?;
 
         let comp = file
@@ -133,7 +133,7 @@ async fn run_copy(
 
     let dir_arc = state
         .store_mut()
-        .try_directory_mut(&dir)
+        .directory_mut(&dir)
         .map_err(anyhow::Error::from)?;
 
     let mut path = dir_arc.path().clone();
@@ -146,7 +146,7 @@ async fn run_copy(
         .save()
         .context(format!("Save copy of {} as {}", req.uid, new_uid))?;
 
-    dir_arc.add_file(new_file);
+    dir_arc.add_file(new_file).map_err(anyhow::Error::from)?;
 
     Ok(Json(Response {}))
 }

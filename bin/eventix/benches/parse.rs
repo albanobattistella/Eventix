@@ -24,6 +24,7 @@ fn benchmark_parse(c: &mut Criterion) {
                 Arc::new(CAL_ID.to_string()),
                 cal_dir.clone(),
                 "Benchmark Calendar".to_string(),
+                false,
                 &local_tz,
             )
             .expect("parse generated benchmark calendar dir");

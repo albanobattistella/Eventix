@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod migration;
 mod misc;
 mod persalarms;
 mod settings;
@@ -9,6 +10,9 @@ mod sync;
 
 /// Utility helpers exposed to other crates and tests.
 pub mod util;
+
+/// The current version of the persisted state files.
+pub const CURRENT_VERSION: u32 = 1;
 
 use anyhow::{Context, anyhow};
 use chrono::NaiveDateTime;
@@ -141,8 +145,10 @@ impl State {
         let mut store = CalStore::default();
         let local_tz = locale.timezone();
         for (col_id, col) in settings.collections().iter() {
+            let col_read_only = col.is_read_only();
             for (cal_id, cal) in col.calendars() {
-                let dir = Self::load_calendar(&xdg, col_id, col, cal_id, cal, local_tz)?;
+                let dir =
+                    Self::load_calendar(&xdg, col_id, col, cal_id, cal, col_read_only, local_tz)?;
                 store.add(dir);
             }
         }
@@ -210,16 +216,25 @@ impl State {
 
         // detect added/updated calendars
         for (col_id, col) in settings.collections().iter() {
+            let col_read_only = col.is_read_only();
             for (cal_id, cal) in col.calendars() {
                 let cal_id = Arc::new(cal_id.clone());
                 if store.directory(&cal_id).is_some() {
-                    match store.try_directory_mut(&cal_id) {
+                    match store.directory_mut(&cal_id) {
                         Ok(dir) => dir.set_name(cal.name().clone()),
                         Err(eventix_ical::col::ColError::DirWriteProtected(_)) => {}
                         Err(err) => return Err(err.into()),
                     }
                 } else {
-                    let dir = Self::load_calendar(xdg, col_id, col, &cal_id, cal, local_tz)?;
+                    let dir = Self::load_calendar(
+                        xdg,
+                        col_id,
+                        col,
+                        &cal_id,
+                        cal,
+                        col_read_only,
+                        local_tz,
+                    )?;
                     store.add(dir);
                 }
             }
@@ -237,27 +252,34 @@ impl State {
         col: &CollectionSettings,
         cal_id: &str,
         cal: &CalendarSettings,
+        read_only: bool,
         local_tz: &Tz,
     ) -> anyhow::Result<CalDir> {
         let cal_id: Arc<String> = Arc::from(cal_id.to_owned());
         let col_path = col.path(xdg, col_id);
         let path = col_path.join(cal.folder());
         let mut dir = if path.exists() {
-            CalDir::new_from_dir(cal_id.clone(), path.clone(), cal.name().clone(), local_tz)
-                .with_context(|| {
-                    format!(
-                        "Loading calendar {} from '{}' failed",
-                        cal_id,
-                        path.to_str().unwrap()
-                    )
-                })?
+            CalDir::new_from_dir(
+                cal_id.clone(),
+                path.clone(),
+                cal.name().clone(),
+                read_only,
+                local_tz,
+            )
+            .with_context(|| {
+                format!(
+                    "Loading calendar {} from '{}' failed",
+                    cal_id,
+                    path.to_str().unwrap()
+                )
+            })?
         } else {
             tracing::warn!(
                 "Creating empty calendar '{}' from non-existing directory {}",
                 cal_id,
                 path.to_str().unwrap()
             );
-            CalDir::new_empty(cal_id.clone(), path, cal.name().clone())
+            CalDir::new_empty(cal_id.clone(), path, cal.name().clone(), read_only)
         };
 
         // Workaround for a bug in Exchange/davmail:
@@ -266,8 +288,12 @@ impl State {
         // collection, add our organizer information to such components so downstream code can rely
         // on it.
         let organizer = col.build_organizer();
-        if let Some(organizer) = organizer {
-            for comp in dir.files_mut().iter_mut().flat_map(|f| {
+        if let Some(organizer) = organizer
+            // we skip read-only collections here, but that's okay, because if it's read-only being
+            // the organizer would not help us to do any changes anyway.
+            && let Ok(files) = dir.files_mut()
+        {
+            for comp in files.iter_mut().flat_map(|f| {
                 f.component_with_mut(|c| {
                     c.rid().is_none() && c.organizer().is_none() && c.attendees().is_some()
                 })
@@ -497,6 +523,7 @@ impl State {
 
 /// Read and deserialize a TOML file from `filename`.
 pub fn load_from_file<D: DeserializeOwned>(filename: &PathBuf) -> anyhow::Result<D> {
+    migration::migrate_if_needed(filename).context("migrating file")?;
     debug!("Reading from {:?}", filename);
     let mut file = File::options()
         .read(true)
@@ -569,6 +596,7 @@ mod tests {
             Arc::new(id.to_string()),
             PathBuf::from(format!("/tmp/{id}")),
             name.to_string(),
+            false,
         ));
         State::new_for_test(store, Misc::new(PathBuf::default()))
     }
@@ -587,6 +615,7 @@ mod tests {
             Arc::new("cal2".to_string()),
             PathBuf::from("/tmp/cal2"),
             "Second".to_string(),
+            false,
         ));
         assert_eq!(state.store().directories().len(), 2);
     }

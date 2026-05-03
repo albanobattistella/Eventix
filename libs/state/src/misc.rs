@@ -28,6 +28,8 @@ const FILENAME: &str = "misc.toml";
 /// collection tokens.
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Misc {
+    #[serde(default)]
+    version: u32,
     #[serde(skip)]
     path: PathBuf,
     #[serde(default)]
@@ -52,6 +54,7 @@ impl Misc {
     /// are not immediately re-fired.
     pub(crate) fn new(path: PathBuf) -> Self {
         Self {
+            version: crate::CURRENT_VERSION,
             path,
             locale_type: LocaleType::default(),
             last_alarm_check: chrono::Local::now().naive_utc(),

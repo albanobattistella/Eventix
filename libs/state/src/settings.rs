@@ -18,6 +18,8 @@ const FILENAME: &str = "settings.toml";
 /// name and each contains one or more calendar entries.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
+    #[serde(default)]
+    version: u32,
     #[serde(skip)]
     path: PathBuf,
     #[serde(rename = "collection")]
@@ -28,6 +30,7 @@ impl Settings {
     /// Creates a new empty `Settings` instance backed by the given file path.
     pub fn new(path: PathBuf) -> Self {
         Self {
+            version: crate::CURRENT_VERSION,
             path,
             collections: BTreeMap::new(),
         }
@@ -378,6 +381,22 @@ impl CollectionSettings {
             syncer,
             calendars: BTreeMap::default(),
         }
+    }
+
+    /// Returns whether this collection is configured as read-only.
+    ///
+    /// This respects debug mode: in debug mode, everything is writable. In release mode, this
+    /// returns the syncer's read-only state.
+    pub fn is_read_only(&self) -> bool {
+        if !cfg!(test) && cfg!(debug_assertions) {
+            return false;
+        }
+        self.is_syncer_read_only()
+    }
+
+    /// Returns whether the syncer itself is configured as read-only.
+    pub fn is_syncer_read_only(&self) -> bool {
+        self.syncer.is_read_only()
     }
 
     /// Returns the local filesystem path where this collection's calendar data is stored.

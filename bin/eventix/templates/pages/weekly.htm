@@ -61,16 +61,18 @@
                 <td
                     width="14%"
                     align="center"
-                    class="ev_week_day_header{% if day.date == today %}ev_today{% endif %}"
+                    class="ev_week_day_header {% if day.date == today %}ev_today{% endif %}"
                 >
-                    <a
-                        href="javascript:loadWithPrev(
+                    {% if page.any_writable_events() %}
+                        <a
+                            href="javascript:loadWithPrev(
                      '/pages/items/add?ctype=Event&date={{ day.date.format("%Y-%m-%d") }}&allday=true')"
-                        style="float: left"
-                        class="ev_add_icon"
-                    >
-                        <i class="bi bi-plus-square"></i>
-                    </a>
+                            style="float: left"
+                            class="ev_add_icon"
+                        >
+                            <i class="bi bi-plus-square"></i>
+                        </a>
+                    {% endif %}
                     <b>
                         {{
                             day.date|
@@ -159,8 +161,7 @@
                                         style="position: absolute;
                                                top: {{ gap.top }}px;
                                                width: 100%;
-                                               height: {{ gap.height }}px;
-                                               z-index: 0;"
+                                               height: {{ gap.height }}px;"
                                         class="ev_dst_gap"
                                     ></div>
                                 {% endfor %}
@@ -169,8 +170,7 @@
                                         style="position: absolute;
                                                top: {{ fold.top }}px;
                                                width: 100%;
-                                               height: {{ fold.height }}px;
-                                               z-index: 0;"
+                                               height: {{ fold.height }}px;"
                                         class="ev_dst_fold"
                                     ></div>
                                 {% endfor %}
@@ -187,13 +187,15 @@
                                         data-hour="{{ hour }}"
                                         class="ev_hour_cell"
                                     >
-                                        <a
-                                            href="javascript:loadWithPrev('/pages/items/add?ctype=Event&date={{ day.date.format("%Y-%m-%d") }}&hour={{ hour }}')"
-                                            style="float: left"
-                                            class="ev_add_icon"
-                                        >
-                                            <i class="bi bi-plus-square"></i>
-                                        </a>
+                                        {% if page.any_writable_events() %}
+                                            <a
+                                                href="javascript:loadWithPrev('/pages/items/add?ctype=Event&date={{ day.date.format("%Y-%m-%d") }}&hour={{ hour }}')"
+                                                style="float: left"
+                                                class="ev_add_icon"
+                                            >
+                                                <i class="bi bi-plus-square"></i>
+                                            </a>
+                                        {% endif %}
                                     </div>
                                 {% endfor %}
                                 {% for occ in day.occurrences %}

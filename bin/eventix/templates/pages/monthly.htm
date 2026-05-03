@@ -83,6 +83,7 @@
                            {% if day.cur_month %}ev_cur_month{% endif %}
                             "
                 >
+                    {% if page.any_writable_events() %}
                     <a
                         href="javascript:loadWithPrev('/pages/items/add?ctype=Event&date={{ date.format("%Y-%m-%d") }}')"
                         style="float: left"
@@ -90,6 +91,7 @@
                     >
                         <i class="bi bi-plus-square"></i>
                     </a>
+                    {% endif %}
                     {% if day.show_month %}
                     {{ date.format("%b %-d") }}
                     {% else %}

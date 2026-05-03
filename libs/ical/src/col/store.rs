@@ -84,7 +84,7 @@ impl CalStore {
     }
 
     /// Returns a mutable reference to the directory with given id.
-    pub fn try_directory_mut(&mut self, id: &Arc<String>) -> Result<&mut CalDir, ColError> {
+    pub fn directory_mut(&mut self, id: &Arc<String>) -> Result<&mut CalDir, ColError> {
         let write_protected = self.directory_write_protected(id);
         let dir = self
             .dirs
@@ -114,7 +114,7 @@ impl CalStore {
     }
 
     /// Returns a mutable reference to the file with given uid.
-    pub fn try_file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Result<&mut CalFile, ColError> {
+    pub fn file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Result<&mut CalFile, ColError> {
         let uid_str = uid.as_ref();
         let dir = self
             .dirs
@@ -123,9 +123,7 @@ impl CalStore {
             .ok_or_else(|| ColError::ComponentNotFound(uid_str.to_string()))?
             .id()
             .clone();
-        self.try_directory_mut(&dir)?
-            .file_by_id_mut(uid_str)
-            .ok_or_else(|| ColError::ComponentNotFound(uid_str.to_string()))
+        self.directory_mut(&dir)?.file_by_id_mut(uid_str)
     }
 
     /// Returns whether the directory with the given id is write-protected.
@@ -265,15 +263,15 @@ impl CalStore {
             return Err(ColError::DirWriteProtected((**new).clone()));
         }
 
-        let old_src = self.try_directory_mut(old)?;
+        let old_src = self.directory_mut(old)?;
         let mut file = old_src.remove_file(&path)?;
 
-        let new_src = match self.try_directory_mut(new) {
+        let new_src = match self.directory_mut(new) {
             Ok(src) => src,
             Err(err) => {
                 // if that failed, store the file in the old directory again
                 file.save().unwrap();
-                self.try_directory_mut(old).unwrap().add_file(file);
+                self.directory_mut(old).unwrap().add_file(file).unwrap();
                 return Err(err);
             }
         };
@@ -286,10 +284,10 @@ impl CalStore {
             file.set_directory(old.clone());
             file.set_path(old_src.path().join(file.path().file_name().unwrap()));
             file.save().unwrap();
-            self.try_directory_mut(old).unwrap().add_file(file);
+            self.directory_mut(old).unwrap().add_file(file).unwrap();
             return Err(e);
         }
-        new_src.add_file(file);
+        new_src.add_file(file)?;
         Ok(())
     }
 
@@ -322,7 +320,7 @@ mod tests {
 
     /// Builds an empty in-memory [`CalDir`] with the given id.
     fn make_dir(id: &str) -> CalDir {
-        CalDir::new_empty(make_id(id), PathBuf::default(), id.to_string())
+        CalDir::new_empty(make_id(id), PathBuf::default(), id.to_string(), false)
     }
 
     /// Builds an in-memory [`CalFile`] containing a single event with the given UID.
@@ -368,7 +366,7 @@ mod tests {
         assert_eq!(store.directories()[0].name(), "keep");
     }
 
-    // --- directory / try_directory_mut ---
+    // --- directory / directory_mut ---
 
     #[test]
     fn directory_found_and_not_found() {
@@ -381,20 +379,22 @@ mod tests {
             id_a.clone(),
             PathBuf::default(),
             "A".into(),
+            false,
         ));
         store.add(CalDir::new_empty(
             id_b.clone(),
             PathBuf::default(),
             "B".into(),
+            false,
         ));
 
         assert!(store.directory(&id_a).is_some());
         assert!(store.directory(&id_b).is_some());
         assert!(store.directory(&id_missing).is_none());
 
-        assert!(store.try_directory_mut(&id_a).is_ok());
+        assert!(store.directory_mut(&id_a).is_ok());
         assert!(matches!(
-            store.try_directory_mut(&id_missing),
+            store.directory_mut(&id_missing),
             Err(ColError::DirNotFound(_))
         ));
     }
@@ -406,30 +406,30 @@ mod tests {
         let mut store = CalStore::default();
 
         let mut dir_a = make_dir("a");
-        dir_a.add_file(make_event_file("uid-1"));
-        dir_a.add_file(make_event_file("uid-2"));
+        dir_a.add_file(make_event_file("uid-1")).unwrap();
+        dir_a.add_file(make_event_file("uid-2")).unwrap();
         store.add(dir_a);
 
         let mut dir_b = make_dir("b");
-        dir_b.add_file(make_event_file("uid-3"));
+        dir_b.add_file(make_event_file("uid-3")).unwrap();
         store.add(dir_b);
 
         let all_files: Vec<_> = store.files().collect();
         assert_eq!(all_files.len(), 3);
     }
 
-    // --- file_by_id / try_file_by_id_mut ---
+    // --- file_by_id / file_by_id_mut ---
 
     #[test]
     fn file_by_id_found_and_not_found() {
         let mut store = CalStore::default();
 
         let mut dir_a = make_dir("a");
-        dir_a.add_file(make_event_file("uid-in-a"));
+        dir_a.add_file(make_event_file("uid-in-a")).unwrap();
         store.add(dir_a);
 
         let mut dir_b = make_dir("b");
-        dir_b.add_file(make_event_file("uid-in-b"));
+        dir_b.add_file(make_event_file("uid-in-b")).unwrap();
         store.add(dir_b);
 
         // file_by_id searches across all dirs
@@ -437,44 +437,45 @@ mod tests {
         assert!(store.file_by_id("uid-in-b").is_some());
         assert!(store.file_by_id("uid-absent").is_none());
 
-        // try_file_by_id_mut variant
-        assert!(store.try_file_by_id_mut("uid-in-a").is_ok());
+        // file_by_id_mut variant
+        assert!(store.file_by_id_mut("uid-in-a").is_ok());
         assert!(matches!(
-            store.try_file_by_id_mut("uid-absent"),
+            store.file_by_id_mut("uid-absent"),
             Err(ColError::ComponentNotFound(_))
         ));
     }
 
     #[test]
-    fn try_directory_mut_fails_for_write_protected_directory() {
+    fn directory_mut_fails_for_write_protected_directory() {
         let mut store = CalStore::default();
         let id = make_id("protected");
         store.add(CalDir::new_empty(
             id.clone(),
             PathBuf::default(),
             "Protected".into(),
+            false,
         ));
 
         let _guard = store.protect_directories(vec![id.clone()]).unwrap();
 
         assert!(matches!(
-            store.try_directory_mut(&id),
+            store.directory_mut(&id),
             Err(ColError::DirWriteProtected(ref protected_id)) if protected_id == &*id
         ));
     }
 
     #[test]
-    fn try_file_by_id_mut_fails_for_write_protected_directory() {
+    fn file_by_id_mut_fails_for_write_protected_directory() {
         let mut store = CalStore::default();
         let id = make_id("protected");
-        let mut dir = CalDir::new_empty(id.clone(), PathBuf::default(), "Protected".into());
-        dir.add_file(make_event_file("uid-1"));
+        let mut dir = CalDir::new_empty(id.clone(), PathBuf::default(), "Protected".into(), false);
+        dir.add_file(make_event_file("uid-1")).unwrap();
         store.add(dir);
 
         let _guard = store.protect_directories(vec![id.clone()]).unwrap();
 
         assert!(matches!(
-            store.try_file_by_id_mut("uid-1"),
+            store.file_by_id_mut("uid-1"),
             Err(ColError::DirWriteProtected(ref protected_id)) if protected_id == &*id
         ));
     }
@@ -487,6 +488,7 @@ mod tests {
             id.clone(),
             PathBuf::default(),
             "Protected".into(),
+            false,
         ));
 
         let guard = store.protect_directories(vec![id.clone()]).unwrap();
@@ -495,7 +497,7 @@ mod tests {
         drop(guard);
 
         assert!(!store.directory_write_protected(&id));
-        assert!(store.try_directory_mut(&id).is_ok());
+        assert!(store.directory_mut(&id).is_ok());
     }
 
     // --- todos / events ---
@@ -505,9 +507,9 @@ mod tests {
         let mut store = CalStore::default();
 
         let mut dir = make_dir("mixed");
-        dir.add_file(make_event_file("ev-1"));
-        dir.add_file(make_event_file("ev-2"));
-        dir.add_file(make_todo_file("td-1"));
+        dir.add_file(make_event_file("ev-1")).unwrap();
+        dir.add_file(make_event_file("ev-2")).unwrap();
+        dir.add_file(make_todo_file("td-1")).unwrap();
         store.add(dir);
 
         assert_eq!(store.events().count(), 2);
@@ -533,7 +535,7 @@ mod tests {
         cal_a.add_component(CalComponent::Event(ev_a));
         let file_a = CalFile::new(Arc::default(), PathBuf::default(), cal_a);
         let mut dir_a = make_dir("a");
-        dir_a.add_file(file_a);
+        dir_a.add_file(file_a).unwrap();
 
         // Dir B: same address, but this time with a CN. The `contacts()` method must upgrade
         // the existing entry from the bare address to the human-readable name.
@@ -545,7 +547,7 @@ mod tests {
         cal_b.add_component(CalComponent::Event(ev_b));
         let file_b = CalFile::new(Arc::default(), PathBuf::default(), cal_b);
         let mut dir_b = make_dir("b");
-        dir_b.add_file(file_b);
+        dir_b.add_file(file_b).unwrap();
 
         let mut store = CalStore::default();
         store.add(dir_a);
@@ -571,7 +573,7 @@ mod tests {
         cal_a.add_component(CalComponent::Event(ev_a));
         let file_a = CalFile::new(Arc::default(), PathBuf::default(), cal_a);
         let mut dir_a = make_dir("a");
-        dir_a.add_file(file_a);
+        dir_a.add_file(file_a).unwrap();
 
         // Second file with the same address but no CN.
         let mut cal_b = Calendar::default();
@@ -580,7 +582,7 @@ mod tests {
         cal_b.add_component(CalComponent::Event(ev_b));
         let file_b = CalFile::new(Arc::default(), PathBuf::default(), cal_b);
         let mut dir_b = make_dir("b");
-        dir_b.add_file(file_b);
+        dir_b.add_file(file_b).unwrap();
 
         let mut store = CalStore::default();
         store.add(dir_a);
