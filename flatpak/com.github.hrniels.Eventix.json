@@ -65,6 +65,7 @@
                 "install -Dm644 icons/64x64.png /app/share/icons/hicolor/64x64/apps/com.github.hrniels.Eventix.png",
                 "install -Dm644 icons/48x48.png /app/share/icons/hicolor/48x48/apps/com.github.hrniels.Eventix.png",
                 "install -Dm644 icons/index.theme /app/share/icons/hicolor/index.theme",
+                "install -Dm644 com.github.hrniels.Eventix.metainfo.xml -t /app/share/metainfo/",
                 "mkdir -p /app/share/com.github.hrniels.Eventix/locale",
                 "mkdir -p /app/share/com.github.hrniels.Eventix/static",
                 "mkdir -p /app/share/com.github.hrniels.Eventix/icons",

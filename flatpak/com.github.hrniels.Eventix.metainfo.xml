@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>com.github.hrniels.Eventix</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Eventix</name>
+  <developer_name>Nils Asmussen</developer_name>
+  <summary>Event and Task Manager</summary>
+
+  <description>
+    <p>
+      Eventix is an iCalendar event and task manager for Linux desktops. It runs a local web server
+      that provides a calendar UI, and ships a GTK desktop wrapper that embeds that UI in a native
+      application window with system tray integration.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">com.github.hrniels.Eventix.desktop</launchable>
+
+  <releases>
+    <release version="1.0.0" date="2026-05-03">
+      <description>
+        <ul>
+          <li>VTIMEZONE Support: Added full support for reading, writing, and utilizing VTIMEZONE in ical and eventix.</li>
+          <li>Background Synchronization: Sync operations now run in the background, including a 5-minute auto-sync after user activity.</li>
+          <li>Calendar Management: Added ability to add and delete calendars from remote collections (e.g., Radicale, O365).</li>
+          <li>Desktop Keyring Integration: Built-in support for retrieving passwords from org.freedesktop.secrets (desktop-keyring).</li>
+          <li>Drag &amp; Drop / Resizing: Support for resizing events in the weekly view and event copying via Ctrl + Drag.</li>
+          <li>DST Awareness: Added visualization of DST gaps and folds in the weekly view; improved occurrences generation and duration calculations to account for DST changes.</li>
+          <li>Enhanced Recurrence Options: Added "nth day" (e.g., 2nd Tuesday) option for monthly repeats and expanded yearly repetition options.</li>
+          <li>Sync Window Setting: Added a configurable sync time span window for collections.</li>
+          <li>Auto-migration: Added auto-migration for TOML configuration files to newer versions.</li>
+          <li>Improved UI/UX: Dynamically resizing monthly/weekly tables, custom confirm/alert dialogs, keybindings enabled when no input is focused, and spinning icons for long-running operations.</li>
+          <li>RFC Conformance: Numerous fixes for EXDATE, UNTIL, SEQUENCE, and VALARM to better align with iCalendar specifications.</li>
+          <li>Error Handling: Added UI for AJAX errors and better handling of failed requests.</li>
+          <li>Dependencies: Updated core dependencies including gtk, webkit, askama, and serde_qs.</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <url type="homepage">https://github.com/hrniels/eventix</url>
+  <content_rating type="oars-1.1" />
+</component>
