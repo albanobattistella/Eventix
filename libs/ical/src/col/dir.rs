@@ -208,6 +208,8 @@ impl CalDir {
     }
 
     /// Returns a mutable slice with all files in this directory.
+    ///
+    /// This call fails if this directory is read only.
     pub fn files_mut(&mut self) -> Result<&mut [CalFile], ColError> {
         if self.read_only {
             return Err(ColError::DirWriteProtected((*self.id).clone()));
@@ -222,6 +224,8 @@ impl CalDir {
     }
 
     /// Returns a mutable reference to the file that hosts the component with given uid.
+    ///
+    /// This call fails if this directory is read only.
     pub fn file_by_id_mut<S: AsRef<str>>(&mut self, uid: S) -> Result<&mut CalFile, ColError> {
         if self.read_only {
             return Err(ColError::DirWriteProtected((*self.id).clone()));
@@ -295,7 +299,7 @@ impl CalDir {
     /// Deletes the component with given uid (including overwrites).
     ///
     /// If the containing file is empty afterwards, the file will be deleted. Otherwise, the file
-    /// will just be saved.
+    /// will just be saved. This call fails if this directory is read only.
     pub fn delete_by_uid<S: AsRef<str> + ToString>(&mut self, uid: S) -> Result<(), ColError> {
         if self.read_only {
             return Err(ColError::DirWriteProtected((*self.id).clone()));
@@ -311,6 +315,8 @@ impl CalDir {
     }
 
     /// Removes the [`CalFile`] from the collection that contains given uid.
+    ///
+    /// This call fails if this directory is read only.
     pub fn remove_by_uid<S: AsRef<str> + ToString>(&mut self, uid: S) -> Result<CalFile, ColError> {
         if self.read_only {
             return Err(ColError::DirWriteProtected((*self.id).clone()));
