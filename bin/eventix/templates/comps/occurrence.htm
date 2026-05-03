@@ -63,7 +63,7 @@
         {% endif %}
     {% endif %}
 
-    {% if !occ.is_owner() %}
+    {% if mode != OccurrenceMode::Sidebar && !occ.is_owner() %}
         <div class="ev_vertbar
                     {% match occ.participant_status().unwrap_or(CalPartStat::NeedsAction) %}
                     {% when CalPartStat::NeedsAction %}
