@@ -1,6 +1,6 @@
 [submodule "contrib/davmail"]
 	path = contrib/davmail
-	url = https://github.com/Nils-TUD/davmail
+	url = https://github.com/hrniels/davmail.git
 [submodule "contrib/vdirsyncer"]
 	path = contrib/vdirsyncer
 	url = https://github.com/hrniels/vdirsyncer.git

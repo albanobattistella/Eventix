@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -30,13 +31,17 @@ jobs:
             flatpak \
             flatpak-builder \
             python3 \
+            python3-pip \
+            python3-venv \
+            maven \
+            ant \
             elfutils \
             librsvg2-common
 
-      - name: Add Flathub remote
+      - name: Install flathub-build tool
         run: |
-          flatpak remote-add --user --if-not-exists flathub \
-            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.flatpak.Builder
 
       - name: Build Flatpak bundle
         run: ./b flatpak
