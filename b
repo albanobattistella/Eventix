@@ -261,53 +261,64 @@ def cmd_flatpak(args):
     """Builds a Flatpak package for Eventix, including dependencies."""
     state_dir = Path("flatpak/state")
     repo_dir = Path("flatpak/repo")
-    pydeps_dir = Path("flatpak/python-deps")
+    srclist_dir = Path("flatpak/srclists")
     javadeps_dir = Path("flatpak/java-deps")
     sdk_id = "org.gnome.Sdk//50"
-
-    # download vdirsyncer dependencies
-    rt_deps = ["vdirsyncer"]
-    build_deps = ["setuptools", "setuptools_scm", "wheel", "tenacity"]
-    subprocess.run([
-        "pip3", "download",
-        *rt_deps, *build_deps,
-        "--dest", str(pydeps_dir),
-        "--python-version", "3.13",
-        "--only-binary=:all:",
-        "--platform", "manylinux_2_28_x86_64",
-        "--implementation", "cp",
-        "--abi", "cp313",
-    ], check=True)
-
-    # prevent question of whether to install it into system or user
-    user_flag = ["--user"] if (Path.home() / ".local/share/flatpak/runtime/org.gnome.Sdk/x86_64/50").exists() else []
-    # build DavMail with the same Maven shipped in the Flatpak SDK so the vendored repository
-    # matches the later offline build environment.
-    subprocess.run([
-        "flatpak",
-        "run",
-        *user_flag,
-        "--command=sh",
-        "--share=network",
-        "--filesystem=" + str(Path.cwd()),
-        sdk_id,
-        "-c",
-        "export PATH=/usr/lib/sdk/openjdk/bin:$PATH && "
-        "export JAVA_HOME=/usr/lib/sdk/openjdk && "
-        "cd contrib/davmail && "
-        "mvn install -Dmaven.repo.local=../../flatpak/java-deps",
-    ], check=True)
+    srclist_dir.mkdir(exist_ok=True)
 
     # Ensure cargo-sources.json is up to date
     venv_bin = PY_VENV / "bin"
     subprocess.run(["python", "-m", "venv", str(PY_VENV)])
-    subprocess.run([venv_bin / "pip", "install", "aiohttp", "tomlkit"], check=True)
+    subprocess.run([
+        venv_bin / "pip",
+        "install", "aiohttp", "tomlkit", "requirements-parser", "packaging"
+    ], check=True)
     subprocess.run([
         str(venv_bin / "python"), "contrib/flatpak-cargo-generator.py",
-        "Cargo.lock", "-o", "flatpak/cargo-sources.json"
+        "Cargo.lock", "-o", str(srclist_dir / "cargo-sources.json")
     ], check=True)
 
+    # download vdirsyncer dependencies and generate source list
+    subprocess.run([
+        str(venv_bin / "python"), "contrib/flatpak-pip-generator.py",
+        "--output", str(srclist_dir / "python-sources"),
+        "--pyproject-file", "contrib/vdirsyncer/pyproject.toml"
+    ], check=True)
+
+    # prevent question of whether to install it into system or user
+    user_flag = ["--user"] if (Path.home() / ".local/share/flatpak/runtime/org.gnome.Sdk/x86_64/50").exists() else []
+    # build DavMail and generate source list
+    with tempfile.TemporaryDirectory(dir="flatpak") as tmp_javadeps:
+        # Use relative path for Maven repo local to avoid flatpak-in-flatpak issues
+        rel_tmp_javadeps = os.path.relpath(tmp_javadeps, "contrib/davmail")
+        log_file = Path(tmp_javadeps) / "maven-log.txt"
+        try:
+            with open(log_file, "w") as f:
+                subprocess.run([
+                    "flatpak",
+                    "run",
+                    *user_flag,
+                    "--command=sh",
+                    "--share=network",
+                    "--filesystem=" + str(Path.cwd()),
+                    sdk_id,
+                    "-c",
+                    "export PATH=/usr/lib/sdk/openjdk/bin:$PATH && "
+                    "export JAVA_HOME=/usr/lib/sdk/openjdk && "
+                    "cd contrib/davmail && "
+                    "mvn install -Dmaven.repo.local=" + rel_tmp_javadeps,
+                ], check=True, stdout=f)
+            subprocess.run([
+                str(venv_bin / "python"), "contrib/flatpak-gradle-generator.py",
+                "--destdir", "flatpak/java-deps",
+                str(log_file), str(srclist_dir / "java-sources.json")
+            ], check=True)
+        finally:
+            if log_file.exists():
+                log_file.unlink()
+
     # generate archive for flatpak JSON
+
     subprocess.run([
         "tar", "czf", "flatpak/source.tar.gz",
         "--exclude=contrib/davmail/dist",
@@ -319,8 +330,6 @@ def cmd_flatpak(args):
         "flatpak/" + APP_ID + "-Import.desktop",
         "flatpak/" + APP_ID + ".desktop",
         "flatpak/" + APP_ID + ".metainfo.xml",
-        str(pydeps_dir),
-        str(javadeps_dir),
     ], check=True)
 
     # build everything (without network access)
