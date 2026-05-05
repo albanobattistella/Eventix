@@ -12,7 +12,6 @@
         "--share=network",
         "--share=ipc",
         "--device=dri",
-        "--socket=fallback-x11",
         "--socket=x11",
         "--socket=session-bus",
         "--filesystem=xdg-run/pipewire-0",
