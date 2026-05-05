@@ -111,19 +111,27 @@ fn main() {
         // handle messages in main GTK thread
         if let Some(tray) = tray {
             let base_url = url.clone();
+            let mut maximized = false;
             glib::MainContext::default().spawn_local(async move {
                 while let Ok(msg) = main_rx.recv().await {
                     match msg {
                         TrayMessage::LoadPage(uri) => {
                             if !window.is_visible() {
+                                if maximized {
+                                    window.maximize();
+                                }
                                 window.present();
                             }
                             webview.load_uri(&format!("{base_url}{uri}"));
                         }
                         TrayMessage::ToggleWindow => {
                             if window.is_visible() {
+                                maximized = window.is_maximized();
                                 window.set_visible(false);
                             } else {
+                                if maximized {
+                                    window.maximize();
+                                }
                                 window.present();
                             }
                         }
