@@ -333,11 +333,13 @@ def cmd_flatpak(args):
     ], check=True)
 
     # build everything (without network access)
+    add_args = ["--disable-cache"] if not args.no_rebuild else []
     subprocess.run([
         "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
         "--state-dir=" + str(state_dir),
         "--repo=" + str(repo_dir),
         "--delete-build-dirs",
+        *add_args,
         "flatpak/" + APP_ID + ".json",
     ], check=True)
 
@@ -411,6 +413,8 @@ def main():
 
     flatpak_parser = subparsers.add_parser(
         "flatpak", parents=[parent_parser], help="Build flatpak package")
+    flatpak_parser.add_argument("--no-rebuild", help="Skip build step, just repackage",
+                                action="store_true")
     flatpak_parser.set_defaults(func=cmd_flatpak)
 
     format_parser = subparsers.add_parser(
