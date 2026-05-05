@@ -21,6 +21,14 @@
   <launchable type="desktop-id">com.github.hrniels.Eventix.desktop</launchable>
 
   <releases>
+    <release version="1.0.1" date="2026-05-05">
+      <description>
+        <ul>
+          <li>Flatpak packaging improvements.</li>
+          <li>Remember maximized state for Wayland.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-05-03">
       <description>
         <ul>
