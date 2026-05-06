@@ -5,6 +5,7 @@ import fnmatch
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import shlex
 import subprocess
@@ -257,14 +258,93 @@ def cmd_format_check(args):
                                "bin/eventix/templates/**/*.htm"], check=True)
 
 
+def patch_manifest(manifest_path, archives):
+    """Patches the manifest for local build using separate archives."""
+    with open(manifest_path, "r") as f:
+        manifest = json.load(f)
+
+    for module in manifest.get("modules", []):
+        if isinstance(module, str):
+            continue
+
+        name = module.get("name")
+        if name in archives:
+            # Replace the git/file source with our local archive
+            # We assume the first source is the main one to be replaced
+            new_sources = [{
+                "type": "archive",
+                "path": archives[name],
+                "strip-components": 1
+            }]
+            # Keep other sources (like dependency lists)
+            if "sources" in module:
+                for src in module["sources"]:
+                    if isinstance(src, str) or (isinstance(src, dict) and src.get("type") != "git"):
+                        # Keep everything that isn't a git source (or the main one)
+                        # Actually, flathub manifest usually has one git source.
+                        if isinstance(src, dict) and src.get("type") == "git":
+                            continue
+                        new_sources.append(src)
+            module["sources"] = new_sources
+
+        # Specific fixes for relative paths in build commands
+        if name == "vdirsyncer":
+            build_options = module.setdefault("build-options", {})
+            env = build_options.setdefault("env", {})
+            env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VDIRSYNCER"] = "0.20.0+eventix"
+
+        if name == "davmail":
+            module["build-commands"] = [
+                cmd.replace("/run/build/davmail/flatpak/java-deps", "/run/build/davmail/java-deps")
+                for cmd in module.get("build-commands", [])
+            ]
+
+    return manifest
+
+
+def create_archives(app_id):
+    """Creates separate archives for Eventix, vdirsyncer, and davmail."""
+    archives = {
+        "Eventix": "eventix.tar.gz",
+        "vdirsyncer": "vdirsyncer.tar.gz",
+        "davmail": "davmail.tar.gz",
+    }
+
+    # 1. Eventix (core)
+    subprocess.run([
+        "tar", "czf", "flatpak/eventix.tar.gz",
+        "--exclude=contrib",
+        # put everything into a subdirectory
+        "--transform=s#^#eventix/#",
+        ".git", "bin", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
+        "flatpak/" + app_id + "-Import.desktop",
+        "flatpak/" + app_id + ".desktop",
+        "flatpak/" + app_id + ".metainfo.xml",
+    ], check=True)
+
+    # 2. vdirsyncer
+    subprocess.run([
+        "tar", "czf", "flatpak/vdirsyncer.tar.gz",
+        "-C", "contrib",
+        "vdirsyncer",
+    ], check=True)
+
+    # 3. DavMail
+    subprocess.run([
+        "tar", "czf", "flatpak/davmail.tar.gz",
+        "-C", "contrib",
+        "--exclude=davmail/dist",
+        "davmail",
+    ], check=True)
+
+    return archives
+
+
 def cmd_flatpak(args):
     """Builds a Flatpak package for Eventix, including dependencies."""
     state_dir = Path("flatpak/state")
     repo_dir = Path("flatpak/repo")
-    srclist_dir = Path("flatpak/srclists")
-    javadeps_dir = Path("flatpak/java-deps")
     sdk_id = "org.gnome.Sdk//50"
-    srclist_dir.mkdir(exist_ok=True)
 
     # Ensure cargo-sources.json is up to date
     venv_bin = PY_VENV / "bin"
@@ -275,13 +355,13 @@ def cmd_flatpak(args):
     ], check=True)
     subprocess.run([
         str(venv_bin / "python"), "contrib/flatpak-cargo-generator.py",
-        "Cargo.lock", "-o", str(srclist_dir / "cargo-sources.json")
+        "Cargo.lock", "-o", "flatpak/cargo-sources.json"
     ], check=True)
 
     # download vdirsyncer dependencies and generate source list
     subprocess.run([
         str(venv_bin / "python"), "contrib/flatpak-pip-generator.py",
-        "--output", str(srclist_dir / "python-sources"),
+        "--output", "flatpak/python-sources",
         "--pyproject-file", "contrib/vdirsyncer/pyproject.toml"
     ], check=True)
 
@@ -311,42 +391,41 @@ def cmd_flatpak(args):
             subprocess.run([
                 str(venv_bin / "python"), "contrib/flatpak-gradle-generator.py",
                 "--destdir", "flatpak/java-deps",
-                str(log_file), str(srclist_dir / "java-sources.json")
+                str(log_file), "flatpak/java-sources.json"
             ], check=True)
         finally:
             if log_file.exists():
                 log_file.unlink()
 
-    # generate archive for flatpak JSON
+    # generate archives for flatpak JSON
+    archives = create_archives(APP_ID)
 
-    subprocess.run([
-        "tar", "czf", "flatpak/source.tar.gz",
-        "--exclude=contrib/davmail/dist",
-        # put everything into a subdirectory
-        "--transform=s#^#eventix/#",
-        # include .git for GIT_HASH and submodule version metadata
-        ".git", "bin", "contrib", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
-        # include the files for flatpak building
-        "flatpak/" + APP_ID + "-Import.desktop",
-        "flatpak/" + APP_ID + ".desktop",
-        "flatpak/" + APP_ID + ".metainfo.xml",
-    ], check=True)
+    # Patch the manifest for local build
+    manifest_path = Path("flatpak") / (APP_ID + ".json")
+    manifest = patch_manifest(manifest_path, archives)
 
-    # build everything (without network access)
-    add_args = ["--disable-cache"] if not args.no_rebuild else []
-    subprocess.run([
-        "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
-        "--state-dir=" + str(state_dir),
-        "--repo=" + str(repo_dir),
-        "--delete-build-dirs",
-        *add_args,
-        "flatpak/" + APP_ID + ".json",
-    ], check=True)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", dir="flatpak", delete=False) as tmp:
+        json.dump(manifest, tmp, indent=4)
+        tmp_manifest_path = tmp.name
 
-    # create flatpak package
-    subprocess.run([
-        "flatpak", "build-bundle", str(repo_dir), "flatpak/Eventix.flatpak", APP_ID
-    ], check=True)
+    try:
+        # build everything (without network access)
+        add_args = ["--disable-cache"] if not args.no_rebuild else []
+        subprocess.run([
+            "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
+            "--state-dir=" + str(state_dir),
+            "--repo=" + str(repo_dir),
+            "--delete-build-dirs",
+            *add_args,
+            tmp_manifest_path,
+        ], check=True)
+
+        # create flatpak package
+        subprocess.run([
+            "flatpak", "build-bundle", str(repo_dir), "flatpak/Eventix.flatpak", APP_ID
+        ], check=True)
+    finally:
+        os.unlink(tmp_manifest_path)
 
     # remove builddir; apparently we cannot control where that's stored
     shutil.rmtree("builddir", ignore_errors=True)

@@ -30,12 +30,7 @@
         {
             "name": "cargo-vendor",
             "sources": [
-                {
-                    "type": "archive",
-                    "path": "source.tar.gz",
-                    "strip-components": 1
-                },
-                "srclists/cargo-sources.json"
+                "cargo-sources.json"
             ],
             "buildsystem": "simple",
             "build-commands": [
@@ -44,7 +39,7 @@
             ]
         },
         {
-            "name": "Eventix-build",
+            "name": "Eventix",
             "buildsystem": "simple",
             "build-commands": [
                 "mkdir -p .cargo",
@@ -57,20 +52,7 @@
                 "cp target/release/eventix /app/build-artifacts/",
                 "cp target/release/eventix-app /app/build-artifacts/",
                 "cp target/release/eventix-import /app/build-artifacts/",
-                "cp target/release/eventix-keyring /app/build-artifacts/"
-            ],
-            "sources": [
-                {
-                    "type": "archive",
-                    "path": "source.tar.gz",
-                    "strip-components": 1
-                }
-            ]
-        },
-        {
-            "name": "Eventix-install",
-            "buildsystem": "simple",
-            "build-commands": [
+                "cp target/release/eventix-keyring /app/build-artifacts/",
                 "install -Dm755 /app/build-artifacts/eventix -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-app -t /app/bin/",
                 "install -Dm755 /app/build-artifacts/eventix-import -t /app/bin/",
@@ -86,8 +68,6 @@
                 "install -Dm644 data/icons/index.theme /app/share/icons/hicolor/index.theme",
                 "install -Dm644 flatpak/io.github.hrniels.Eventix.metainfo.xml -t /app/share/metainfo/",
                 "install -Dm644 LICENSE -t /app/share/licenses/io.github.hrniels.Eventix/eventix",
-                "install -Dm644 contrib/vdirsyncer/LICENSE -t /app/share/licenses/io.github.hrniels.Eventix/vdirsyncer",
-                "install -Dm644 contrib/davmail/LICENSE -t /app/share/licenses/io.github.hrniels.Eventix/davmail",
                 "mkdir -p /app/share/io.github.hrniels.Eventix/locale",
                 "mkdir -p /app/share/io.github.hrniels.Eventix/static",
                 "mkdir -p /app/share/io.github.hrniels.Eventix/icons",
@@ -100,24 +80,27 @@
             ],
             "sources": [
                 {
-                    "type": "archive",
-                    "path": "source.tar.gz",
-                    "strip-components": 1
+                    "type": "git",
+                    "url": "https://github.com/hrniels/eventix.git",
+                    "commit": "8b8e64deafee69182077a52fd9e02fead7259401",
+                    "disable-submodules": true
                 }
             ]
         },
-        "srclists/python-sources.json",
+        "python-sources.json",
         {
             "name": "vdirsyncer",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --no-index --find-links=. --prefix=/app --no-build-isolation contrib/vdirsyncer"
+                "pip3 install --no-index --find-links=. --prefix=/app --no-build-isolation .",
+                "install -Dm644 LICENSE -t /app/share/licenses/io.github.hrniels.Eventix/vdirsyncer"
             ],
             "sources": [
                 {
-                    "type": "archive",
-                    "path": "source.tar.gz",
-                    "strip-components": 1
+                    "type": "git",
+                    "url": "https://github.com/hrniels/vdirsyncer.git",
+                    "commit": "a83fc9641fb1914e0a9af2f3339961cc7a126f26",
+                    "disable-submodules": true
                 }
             ]
         },
@@ -132,20 +115,22 @@
             },
             "build-commands": [
                 "export PATH=/usr/lib/sdk/openjdk/bin:$PATH",
-                "cd contrib/davmail && mvn --offline install -Dmaven.repo.local=/run/build/davmail/flatpak/java-deps",
-                "cd contrib/davmail && ant prepare-dist",
-                "install -Dm755 contrib/davmail/dist/davmail /app/bin/davmail",
-                "install -D contrib/davmail/dist/davmail.jar /app/bin/davmail.jar",
+                "mvn --offline install -Dmaven.repo.local=flatpak/java-deps",
+                "ant prepare-dist",
+                "install -Dm755 dist/davmail /app/bin/davmail",
+                "install -D dist/davmail.jar /app/bin/davmail.jar",
                 "mkdir -p /app/bin/lib",
-                "cp contrib/davmail/dist/lib/* /app/bin/lib"
+                "cp dist/lib/* /app/bin/lib",
+                "install -Dm644 LICENSE -t /app/share/licenses/io.github.hrniels.Eventix/davmail"
             ],
             "sources": [
                 {
-                    "type": "archive",
-                    "path": "source.tar.gz",
-                    "strip-components": 1
+                    "type": "git",
+                    "url": "https://github.com/hrniels/davmail.git",
+                    "commit": "7d8c513f236e5c1af928fee57f5f55d9769133ce",
+                    "disable-submodules": true
                 },
-                "srclists/java-sources.json"
+                "java-sources.json"
             ]
         },
         {

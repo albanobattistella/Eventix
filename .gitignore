@@ -2,9 +2,12 @@
 /run
 /flatpak/build
 /flatpak/repo
-/flatpak/srclists
+/flatpak/state
+/flatpak/cargo-sources.json
+/flatpak/python-sources.json
+/flatpak/java-sources.json
 /flatpak/*.flatpak
-/flatpak/source.tar.gz
+/flatpak/*.tar.gz
 __pycache__
 .cargo
 .rustup
