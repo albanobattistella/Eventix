@@ -9,9 +9,9 @@ use std::{env, fs};
 
 fn main() {
     let app_id = if env::var("PROFILE").unwrap() == "debug" {
-        "com.github.hrniels.Eventix-debug"
+        "io.github.hrniels.Eventix-debug"
     } else {
-        "com.github.hrniels.Eventix"
+        "io.github.hrniels.Eventix"
     };
     let icons = ["month", "week", "list", "event", "todo"];
 

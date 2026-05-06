@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 # Define application identifiers for normal and debug mode
-APP_ID = "com.github.hrniels.Eventix"
+APP_ID = "io.github.hrniels.Eventix"
 APP_ID_DEBUG = APP_ID + "-debug"
 
 PY_VENV = Path("run/venv")
