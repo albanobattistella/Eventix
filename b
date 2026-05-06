@@ -258,92 +258,8 @@ def cmd_format_check(args):
                                "bin/eventix/templates/**/*.htm"], check=True)
 
 
-def patch_manifest(manifest_path, archives):
-    """Patches the manifest for local build using separate archives."""
-    with open(manifest_path, "r") as f:
-        manifest = json.load(f)
-
-    for module in manifest.get("modules", []):
-        if isinstance(module, str):
-            continue
-
-        name = module.get("name")
-        if name in archives:
-            # Replace the git/file source with our local archive
-            # We assume the first source is the main one to be replaced
-            new_sources = [{
-                "type": "archive",
-                "path": archives[name],
-                "strip-components": 1
-            }]
-            # Keep other sources (like dependency lists)
-            if "sources" in module:
-                for src in module["sources"]:
-                    if isinstance(src, str) or (isinstance(src, dict) and src.get("type") != "git"):
-                        # Keep everything that isn't a git source (or the main one)
-                        # Actually, flathub manifest usually has one git source.
-                        if isinstance(src, dict) and src.get("type") == "git":
-                            continue
-                        new_sources.append(src)
-            module["sources"] = new_sources
-
-        # Specific fixes for relative paths in build commands
-        if name == "vdirsyncer":
-            build_options = module.setdefault("build-options", {})
-            env = build_options.setdefault("env", {})
-            env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VDIRSYNCER"] = "0.20.0+eventix"
-
-        if name == "davmail":
-            module["build-commands"] = [
-                cmd.replace("/run/build/davmail/flatpak/java-deps", "/run/build/davmail/java-deps")
-                for cmd in module.get("build-commands", [])
-            ]
-
-    return manifest
-
-
-def create_archives(app_id):
-    """Creates separate archives for Eventix, vdirsyncer, and davmail."""
-    archives = {
-        "Eventix": "eventix.tar.gz",
-        "vdirsyncer": "vdirsyncer.tar.gz",
-        "davmail": "davmail.tar.gz",
-    }
-
-    # 1. Eventix (core)
-    subprocess.run([
-        "tar", "czf", "flatpak/eventix.tar.gz",
-        "--exclude=contrib",
-        # put everything into a subdirectory
-        "--transform=s#^#eventix/#",
-        ".git", "bin", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
-        "flatpak/" + app_id + "-Import.desktop",
-        "flatpak/" + app_id + ".desktop",
-        "flatpak/" + app_id + ".metainfo.xml",
-    ], check=True)
-
-    # 2. vdirsyncer
-    subprocess.run([
-        "tar", "czf", "flatpak/vdirsyncer.tar.gz",
-        "-C", "contrib",
-        "vdirsyncer",
-    ], check=True)
-
-    # 3. DavMail
-    subprocess.run([
-        "tar", "czf", "flatpak/davmail.tar.gz",
-        "-C", "contrib",
-        "--exclude=davmail/dist",
-        "davmail",
-    ], check=True)
-
-    return archives
-
-
-def cmd_flatpak(args):
-    """Builds a Flatpak package for Eventix, including dependencies."""
-    state_dir = Path("flatpak/state")
-    repo_dir = Path("flatpak/repo")
+def cmd_flatpak_sources(args):
+    """Generates the Flatpak sources for later package builds or FlatHub."""
     sdk_id = "org.gnome.Sdk//50"
 
     # Ensure cargo-sources.json is up to date
@@ -397,12 +313,102 @@ def cmd_flatpak(args):
             if log_file.exists():
                 log_file.unlink()
 
+
+def _patch_manifest(manifest_path, archives):
+    """Patches the manifest for local build using separate archives."""
+    with open(manifest_path, "r") as f:
+        manifest = json.load(f)
+
+    for module in manifest.get("modules", []):
+        if isinstance(module, str):
+            continue
+
+        name = module.get("name")
+        if name in archives:
+            # Replace the git/file source with our local archive
+            # We assume the first source is the main one to be replaced
+            new_sources = [{
+                "type": "archive",
+                "path": archives[name],
+                "strip-components": 1
+            }]
+            # Keep other sources (like dependency lists)
+            if "sources" in module:
+                for src in module["sources"]:
+                    if isinstance(src, str) or (isinstance(src, dict) and src.get("type") != "git"):
+                        # Keep everything that isn't a git source (or the main one)
+                        # Actually, flathub manifest usually has one git source.
+                        if isinstance(src, dict) and src.get("type") == "git":
+                            continue
+                        new_sources.append(src)
+            module["sources"] = new_sources
+
+        # Specific fixes for relative paths in build commands
+        if name == "vdirsyncer":
+            build_options = module.setdefault("build-options", {})
+            env = build_options.setdefault("env", {})
+            env["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VDIRSYNCER"] = "0.20.0+eventix"
+
+        if name == "davmail":
+            module["build-commands"] = [
+                cmd.replace("/run/build/davmail/flatpak/java-deps", "/run/build/davmail/java-deps")
+                for cmd in module.get("build-commands", [])
+            ]
+
+    return manifest
+
+
+def _create_archives(app_id):
+    """Creates separate archives for Eventix, vdirsyncer, and davmail."""
+    archives = {
+        "Eventix": "eventix.tar.gz",
+        "vdirsyncer": "vdirsyncer.tar.gz",
+        "davmail": "davmail.tar.gz",
+    }
+
+    # 1. Eventix (core)
+    subprocess.run([
+        "tar", "czf", "flatpak/eventix.tar.gz",
+        "--exclude=contrib",
+        # put everything into a subdirectory
+        "--transform=s#^#eventix/#",
+        ".git", "bin", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
+        "flatpak/" + app_id + "-Import.desktop",
+        "flatpak/" + app_id + ".desktop",
+        "flatpak/" + app_id + ".metainfo.xml",
+    ], check=True)
+
+    # 2. vdirsyncer
+    subprocess.run([
+        "tar", "czf", "flatpak/vdirsyncer.tar.gz",
+        "-C", "contrib",
+        "vdirsyncer",
+    ], check=True)
+
+    # 3. DavMail
+    subprocess.run([
+        "tar", "czf", "flatpak/davmail.tar.gz",
+        "-C", "contrib",
+        "--exclude=davmail/dist",
+        "davmail",
+    ], check=True)
+
+    return archives
+
+
+def cmd_flatpak(args):
+    """Builds a Flatpak package for Eventix, including dependencies."""
+    state_dir = Path("flatpak/state")
+    repo_dir = Path("flatpak/repo")
+
+    cmd_flatpak_sources([])
+
     # generate archives for flatpak JSON
-    archives = create_archives(APP_ID)
+    archives = _create_archives(APP_ID)
 
     # Patch the manifest for local build
     manifest_path = Path("flatpak") / (APP_ID + ".json")
-    manifest = patch_manifest(manifest_path, archives)
+    manifest = _patch_manifest(manifest_path, archives)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", dir="flatpak", delete=False) as tmp:
         json.dump(manifest, tmp, indent=4)
@@ -489,6 +495,10 @@ def main():
         "file", nargs="?", help="Show line-by-line coverage for a single file"
     )
     coverage_parser.set_defaults(func=cmd_coverage)
+
+    flatpak_src_parser = subparsers.add_parser(
+        "flatpak-sources", parents=[parent_parser], help="Generate flatpak sources")
+    flatpak_src_parser.set_defaults(func=cmd_flatpak_sources)
 
     flatpak_parser = subparsers.add_parser(
         "flatpak", parents=[parent_parser], help="Build flatpak package")
