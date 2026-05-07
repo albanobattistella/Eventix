@@ -21,6 +21,14 @@
   <launchable type="desktop-id">io.github.hrniels.Eventix.desktop</launchable>
 
   <releases>
+    <release version="1.0.2" date="2026-05-07">
+      <description>
+        <ul>
+          <li>Renamed Application ID to io.github.hrniels.Eventix (required for FlatHub).</li>
+          <li>Reworked flatpak packaging to prepare for FlatHub.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-05-05">
       <description>
         <ul>
