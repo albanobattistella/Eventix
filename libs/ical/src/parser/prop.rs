@@ -8,7 +8,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::parser::{LineReader, ParseError};
+use crate::parser::{LineReader, ParseError, ParseErrorType};
 use crate::util;
 
 /// A property according to RFC 5545.
@@ -25,6 +25,72 @@ pub struct Property {
 }
 
 impl Property {
+    /// Parses a property from a string at a specific line number.
+    pub fn from_str_at(s: &str, line: usize) -> Result<Self, ParseError> {
+        let mut name = String::new();
+        let mut chars = s.char_indices();
+        let (end, has_params) = loop {
+            let Some((idx, c)) = chars.next() else {
+                return Err(ParseError::new(line, ParseErrorType::MissingNameEnd));
+            };
+            if c == ';' || c == ':' {
+                break (idx + 1, c == ';');
+            }
+            name.push(c);
+        };
+
+        // Normalize property name to uppercase (RFC 5545: case-insensitive names)
+        name = name.to_ascii_uppercase();
+
+        let (params, val_start) = if has_params {
+            let mut in_quote = false;
+            let mut param = String::new();
+            let mut params = Vec::new();
+            let end = loop {
+                let Some((idx, c)) = chars.next() else {
+                    return Err(ParseError::new(line, ParseErrorType::MissingParamEnd));
+                };
+                if !in_quote {
+                    if c == ';' || c == ':' {
+                        params.push(param.parse::<Parameter>().map_err(|e| e.with_line(line))?);
+                        param.clear();
+                        if c == ':' {
+                            break idx + 1;
+                        }
+                    } else {
+                        param.push(c);
+                    }
+                } else {
+                    param.push(c);
+                }
+                if c == '"' {
+                    in_quote = !in_quote;
+                }
+            };
+            (params, end)
+        } else {
+            (vec![], end)
+        };
+
+        let raw_value = s[val_start..].to_string();
+        let escaped = (!uses_text_escaping(&name) && needs_raw_value_preservation(&raw_value))
+            || has_unknown_text_escape(&raw_value);
+        let value = if escaped {
+            raw_value
+        } else {
+            util::unescape_text(&raw_value)
+        };
+
+        Ok(Self {
+            // Non-TEXT values are preserved exactly as parsed so unknown and structured
+            // properties round-trip without applying TEXT escaping rules.
+            escaped,
+            name,
+            params,
+            value,
+        })
+    }
+
     /// Creates a new property with given name, parameters and value.
     ///
     /// In contrast to [`new_escaped`](Self::new_escaped), this method does escape the value when
@@ -120,68 +186,7 @@ impl FromStr for Property {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut name = String::new();
-        let mut chars = s.char_indices();
-        let (end, has_params) = loop {
-            let Some((idx, c)) = chars.next() else {
-                return Err(ParseError::MissingNameEnd);
-            };
-            if c == ';' || c == ':' {
-                break (idx + 1, c == ';');
-            }
-            name.push(c);
-        };
-
-        // Normalize property name to uppercase (RFC 5545: case-insensitive names)
-        name = name.to_ascii_uppercase();
-
-        let (params, val_start) = if has_params {
-            let mut in_quote = false;
-            let mut param = String::new();
-            let mut params = Vec::new();
-            let end = loop {
-                let Some((idx, c)) = chars.next() else {
-                    return Err(ParseError::MissingParamEnd);
-                };
-                if !in_quote {
-                    if c == ';' || c == ':' {
-                        params.push(param.parse::<Parameter>()?);
-                        param.clear();
-                        if c == ':' {
-                            break idx + 1;
-                        }
-                    } else {
-                        param.push(c);
-                    }
-                } else {
-                    param.push(c);
-                }
-                if c == '"' {
-                    in_quote = !in_quote;
-                }
-            };
-            (params, end)
-        } else {
-            (vec![], end)
-        };
-
-        let raw_value = s[val_start..].to_string();
-        let escaped = (!uses_text_escaping(&name) && needs_raw_value_preservation(&raw_value))
-            || has_unknown_text_escape(&raw_value);
-        let value = if escaped {
-            raw_value
-        } else {
-            util::unescape_text(&raw_value)
-        };
-
-        Ok(Self {
-            // Non-TEXT values are preserved exactly as parsed so unknown and structured
-            // properties round-trip without applying TEXT escaping rules.
-            escaped,
-            name,
-            params,
-            value,
-        })
+        Self::from_str_at(s, 0)
     }
 }
 
@@ -298,7 +303,9 @@ impl FromStr for Parameter {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = s.splitn(2, '=');
         let name = parts.next().unwrap().to_ascii_uppercase();
-        let value = parts.next().ok_or(ParseError::MissingParamValue)?;
+        let value = parts
+            .next()
+            .ok_or(ParseError::from(ParseErrorType::MissingParamValue))?;
         let was_quoted = value.starts_with('"');
 
         // strip quotes
@@ -374,14 +381,17 @@ mod tests {
 
     #[test]
     fn errors() {
-        assert_eq!("BEGIN".parse::<Property>(), Err(ParseError::MissingNameEnd));
+        assert_eq!(
+            "BEGIN".parse::<Property>(),
+            Err(ParseError::from(ParseErrorType::MissingNameEnd))
+        );
         assert_eq!(
             "BEGIN;TEST".parse::<Property>(),
-            Err(ParseError::MissingParamEnd)
+            Err(ParseError::from(ParseErrorType::MissingParamEnd))
         );
         assert_eq!(
             "BEGIN;:BLA".parse::<Property>(),
-            Err(ParseError::MissingParamValue)
+            Err(ParseError::from(ParseErrorType::MissingParamValue))
         );
     }
 

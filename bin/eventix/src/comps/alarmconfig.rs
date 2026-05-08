@@ -9,7 +9,7 @@ use chrono_tz::Tz;
 use eventix_ical::objects::{
     CalAction, CalAlarm, CalDateType, CalRelated, CalTrigger, DateContext,
 };
-use eventix_ical::parser::ParseError;
+use eventix_ical::parser::ParseErrorType;
 use eventix_locale::Locale;
 use serde::{Deserialize, Deserializer};
 use std::fmt::{self, Display};
@@ -204,8 +204,10 @@ impl AlarmConfig {
                     if let Err(e) =
                         DateContext::system().validate_date(&cal_date, locale.timezone())
                     {
-                        page.add_error(match &e {
-                            ParseError::AmbiguousTime(_) => locale.translate("error.dst_ambiguous"),
+                        page.add_error(match e.ty() {
+                            &ParseErrorType::AmbiguousTime(_) => {
+                                locale.translate("error.dst_ambiguous")
+                            }
                             _ => locale.translate("error.dst_nonexistent"),
                         });
                         return false;

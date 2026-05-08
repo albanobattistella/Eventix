@@ -6,7 +6,10 @@ use std::io::BufRead;
 use std::ops::{Deref, DerefMut};
 
 use crate::objects::{CalDate, CalEventStatus};
-use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
+use crate::parser::{
+    LineReader, LineResultExt, ParseError, ParseErrorType, Property, PropertyConsumer,
+    PropertyProducer,
+};
 
 use super::CalCompType;
 use super::component::EventLikeComponent;
@@ -103,19 +106,21 @@ impl PropertyConsumer for CalEvent {
         let mut comp = Self::new_empty();
         loop {
             let Some(line) = lines.next() else {
-                break Err(ParseError::UnexpectedEOF);
+                break Err(
+                    ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num())
+                );
             };
 
-            let prop = line.parse::<Property>()?;
+            let prop = Property::from_str_at(&line, lines.line_num())?;
             match prop.name().as_str() {
                 "END" if prop.value() == "VEVENT" => {
                     break Ok(comp);
                 }
                 "STATUS" => {
-                    comp.status = Some(prop.value().parse()?);
+                    comp.status = Some(prop.value().parse().with_line(lines)?);
                 }
                 "DTEND" => {
-                    comp.end = Some(prop.try_into()?);
+                    comp.end = Some(prop.try_into().with_line(lines)?);
                 }
                 _ => {
                     comp.inner.parse_prop(lines, prop)?;

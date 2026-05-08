@@ -13,13 +13,44 @@ const MAX_LINE_LEN: usize = 75;
 /// logical lines.
 pub struct LineReader<R: BufRead> {
     reader: R,
-    last: Option<Vec<u8>>,
+    last: Option<(Vec<u8>, usize)>,
+    line_num: usize,
+    physical_line_num: usize,
 }
 
 impl<R: BufRead> LineReader<R> {
     /// Creates a new [`LineReader`] from given [`BufRead`] implementation.
     pub fn new(reader: R) -> Self {
-        Self { reader, last: None }
+        Self {
+            reader,
+            last: None,
+            line_num: 0,
+            physical_line_num: 0,
+        }
+    }
+
+    /// Returns the current line number of the line that was just returned by [`next`](Self::next).
+    pub fn line_num(&self) -> usize {
+        self.line_num
+    }
+
+    fn read_physical_line(&mut self) -> Option<(Vec<u8>, usize)> {
+        let mut buf = Vec::new();
+        let read = self.reader.read_until(b'\n', &mut buf).ok()?;
+        if read == 0 {
+            return None;
+        }
+
+        self.physical_line_num += 1;
+        let line_num = self.physical_line_num;
+
+        if buf.ends_with(b"\n") {
+            buf.pop();
+            if buf.ends_with(b"\r") {
+                buf.pop();
+            }
+        }
+        Some((buf, line_num))
     }
 }
 
@@ -27,18 +58,20 @@ impl<R: BufRead> Iterator for LineReader<R> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut next_line = if let Some(last) = self.last.take() {
-            last
+        let (mut next_line, first_line_num) = if let Some((last, line_num)) = self.last.take() {
+            (last, line_num)
         } else {
             loop {
-                let line = read_physical_line(&mut self.reader)?;
+                let (line, line_num) = self.read_physical_line()?;
                 if !line.is_empty() {
-                    break line;
+                    break (line, line_num);
                 }
             }
         };
 
-        while let Some(line) = read_physical_line(&mut self.reader) {
+        self.line_num = first_line_num;
+
+        while let Some((line, line_num)) = self.read_physical_line() {
             if line.is_empty() {
                 continue;
             }
@@ -46,7 +79,7 @@ impl<R: BufRead> Iterator for LineReader<R> {
             if matches!(line.first(), Some(b' ' | b'\t')) {
                 next_line.extend_from_slice(&line[1..]);
             } else {
-                self.last = Some(line);
+                self.last = Some((line, line_num));
                 break;
             }
         }
@@ -57,22 +90,6 @@ impl<R: BufRead> Iterator for LineReader<R> {
             String::from_utf8(next_line).ok()
         }
     }
-}
-
-fn read_physical_line<R: BufRead>(reader: &mut R) -> Option<Vec<u8>> {
-    let mut buf = Vec::new();
-    let read = reader.read_until(b'\n', &mut buf).ok()?;
-    if read == 0 {
-        return None;
-    }
-
-    if buf.ends_with(b"\n") {
-        buf.pop();
-        if buf.ends_with(b"\r") {
-            buf.pop();
-        }
-    }
-    Some(buf)
 }
 
 /// Writes lines according to RFC 5545.

@@ -17,7 +17,7 @@ use chrono::{
 use chrono_tz::Tz;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::parser::{Parameter, ParseError, Property};
+use crate::parser::{Parameter, ParseError, ParseErrorType, Property};
 
 use super::{CalCompType, CalendarTimeZoneResolver};
 
@@ -284,7 +284,7 @@ impl FromStr for CalDateType {
         match s {
             "Inclusive" => Ok(Self::Inclusive),
             "Exclusive" => Ok(Self::Exclusive),
-            _ => Err(ParseError::InvalidDate(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidDate(s.to_string()))),
         }
     }
 }
@@ -532,9 +532,9 @@ impl CalDate {
             Self::DateTime(CalDateTime::Floating(_)) => Ok(Self::DateTime(CalDateTime::Floating(
                 instant.with_timezone(fallback).naive_local(),
             ))),
-            Self::Date(..) => Err(ParseError::InvalidDate(
+            Self::Date(..) => Err(ParseError::from(ParseErrorType::InvalidDate(
                 "timed conversion requires DATE-TIME source".to_string(),
-            )),
+            ))),
         }
     }
 
@@ -578,24 +578,22 @@ impl FromStr for CalDate {
         match s.chars().next() {
             Some('D') => {
                 let mut parts = s[1..].splitn(2, ';');
-                let d = parts
-                    .next()
-                    .unwrap()
-                    .parse::<NaiveDate>()
-                    .map_err(|_| ParseError::MalformedDate(s.to_string()))?;
-                let ty = parts
-                    .next()
-                    .unwrap()
-                    .parse::<CalDateType>()
-                    .map_err(|_| ParseError::MalformedDate(s.to_string()))?;
+                let d =
+                    parts.next().unwrap().parse::<NaiveDate>().map_err(|_| {
+                        ParseError::from(ParseErrorType::MalformedDate(s.to_string()))
+                    })?;
+                let ty =
+                    parts.next().unwrap().parse::<CalDateType>().map_err(|_| {
+                        ParseError::from(ParseErrorType::MalformedDate(s.to_string()))
+                    })?;
                 Ok(CalDate::Date(d, ty))
             }
-            Some('T') => Ok(CalDate::DateTime(
-                s[1..]
-                    .parse()
-                    .map_err(|_| ParseError::MalformedDate(s.to_string()))?,
-            )),
-            _ => Err(ParseError::MalformedDate(s.to_string())),
+            Some('T') => Ok(CalDate::DateTime(s[1..].parse().map_err(|_| {
+                ParseError::from(ParseErrorType::MalformedDate(s.to_string()))
+            })?)),
+            _ => Err(ParseError::from(ParseErrorType::MalformedDate(
+                s.to_string(),
+            ))),
         }
     }
 }
@@ -664,12 +662,12 @@ impl CalDateTime {
     fn from_local_as_utc(local: NaiveDateTime, tz: &Tz) -> Result<Self, ParseError> {
         match tz.from_local_datetime(&local) {
             MappedLocalTime::Single(dt) => Ok(Self::Utc(dt.with_timezone(&Utc))),
-            MappedLocalTime::Ambiguous(_, _) => {
-                Err(ParseError::AmbiguousTime(format!("{} in {}", local, tz)))
-            }
-            MappedLocalTime::None => {
-                Err(ParseError::NonExistentTime(format!("{} in {}", local, tz)))
-            }
+            MappedLocalTime::Ambiguous(_, _) => Err(ParseError::from(
+                ParseErrorType::AmbiguousTime(format!("{} in {}", local, tz)),
+            )),
+            MappedLocalTime::None => Err(ParseError::from(ParseErrorType::NonExistentTime(
+                format!("{} in {}", local, tz),
+            ))),
         }
     }
 
@@ -692,15 +690,15 @@ impl FromStr for CalDateTime {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.chars().next() {
             Some('F') => {
-                let date = s[1..]
-                    .parse::<NaiveDateTime>()
-                    .map_err(|_| ParseError::MalformedDate("foo".to_owned() + s))?;
+                let date = s[1..].parse::<NaiveDateTime>().map_err(|_| {
+                    ParseError::from(ParseErrorType::MalformedDate("foo".to_owned() + s))
+                })?;
                 Ok(CalDateTime::Floating(date))
             }
             Some('U') => {
                 let date = s[1..]
                     .parse::<NaiveDateTime>()
-                    .map_err(|_| ParseError::MalformedDate(s.to_string()))?;
+                    .map_err(|_| ParseError::from(ParseErrorType::MalformedDate(s.to_string())))?;
                 Ok(CalDateTime::Utc(date.and_utc()))
             }
             Some('T') => {
@@ -710,10 +708,12 @@ impl FromStr for CalDateTime {
                     .next()
                     .unwrap()
                     .parse::<NaiveDateTime>()
-                    .map_err(|_| ParseError::MalformedDate(s.to_string()))?;
+                    .map_err(|_| ParseError::from(ParseErrorType::MalformedDate(s.to_string())))?;
                 Ok(CalDateTime::Timezone(dt, tz))
             }
-            _ => Err(ParseError::MalformedDate(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::MalformedDate(
+                s.to_string(),
+            ))),
         }
     }
 }
@@ -736,7 +736,9 @@ impl TryFrom<Property> for CalDate {
     fn try_from(prop: Property) -> Result<Self, Self::Error> {
         let datetime = prop.value();
         if datetime.len() < 8 {
-            return Err(ParseError::MalformedDate(datetime.to_string()));
+            return Err(ParseError::from(ParseErrorType::MalformedDate(
+                datetime.to_string(),
+            )));
         }
 
         let year = datetime[0..4].parse::<i32>()?;
@@ -744,8 +746,9 @@ impl TryFrom<Property> for CalDate {
         let day = datetime[6..8].parse::<u32>()?;
 
         if datetime.len() == 8 || prop.has_param_value("VALUE", "DATE") {
-            let date = NaiveDate::from_ymd_opt(year, month, day)
-                .ok_or_else(|| ParseError::InvalidDate(datetime.to_string()))?;
+            let date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+                ParseError::from(ParseErrorType::InvalidDate(datetime.to_string()))
+            })?;
             let ty = if prop.name() == "DUE" {
                 CalDateType::Inclusive
             } else {
@@ -755,7 +758,9 @@ impl TryFrom<Property> for CalDate {
         }
 
         if datetime.len() < 15 || &datetime[8..9] != "T" {
-            return Err(ParseError::MalformedDate(datetime.to_string()));
+            return Err(ParseError::from(ParseErrorType::MalformedDate(
+                datetime.to_string(),
+            )));
         }
 
         let hour = datetime[9..11].parse::<u32>()?;
@@ -764,7 +769,7 @@ impl TryFrom<Property> for CalDate {
 
         let date = NaiveDate::from_ymd_opt(year, month, day)
             .and_then(|d| d.and_hms_opt(hour, min, sec))
-            .ok_or_else(|| ParseError::InvalidDate(datetime.to_string()))?;
+            .ok_or_else(|| ParseError::from(ParseErrorType::InvalidDate(datetime.to_string())))?;
 
         let res = if datetime.ends_with('Z') {
             CalDateTime::Utc(date.and_utc())
@@ -921,7 +926,10 @@ mod tests {
         assert_eq!(CalDateType::Inclusive.to_string(), "Inclusive");
 
         let err = "NotADateType".parse::<CalDateType>().unwrap_err();
-        assert_eq!(err, ParseError::InvalidDate("NotADateType".to_string()));
+        assert_eq!(
+            err.ty(),
+            &ParseErrorType::InvalidDate("NotADateType".to_string())
+        );
     }
 
     #[test]
@@ -1047,20 +1055,20 @@ mod tests {
     #[test]
     fn caldate_from_str_errors_are_specific() {
         assert_eq!(
-            "X2024-01-02".parse::<CalDate>().unwrap_err(),
-            ParseError::MalformedDate("X2024-01-02".to_string())
+            "X2024-01-02".parse::<CalDate>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("X2024-01-02".to_string())
         );
         assert_eq!(
-            "Dnot-a-date;Inclusive".parse::<CalDate>().unwrap_err(),
-            ParseError::MalformedDate("Dnot-a-date;Inclusive".to_string())
+            "Dnot-a-date;Inclusive".parse::<CalDate>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("Dnot-a-date;Inclusive".to_string())
         );
         assert_eq!(
-            "D2024-01-02;Unknown".parse::<CalDate>().unwrap_err(),
-            ParseError::MalformedDate("D2024-01-02;Unknown".to_string())
+            "D2024-01-02;Unknown".parse::<CalDate>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("D2024-01-02;Unknown".to_string())
         );
         assert_eq!(
-            "Tnot-a-datetime".parse::<CalDate>().unwrap_err(),
-            ParseError::MalformedDate("Tnot-a-datetime".to_string())
+            "Tnot-a-datetime".parse::<CalDate>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("Tnot-a-datetime".to_string())
         );
     }
 
@@ -1122,20 +1130,38 @@ mod tests {
         );
 
         assert_eq!(
-            "X2024-02-03T04:05:06".parse::<CalDateTime>().unwrap_err(),
-            ParseError::MalformedDate("X2024-02-03T04:05:06".to_string())
+            "X2024-02-03T04:05:06"
+                .parse::<CalDateTime>()
+                .unwrap_err()
+                .ty(),
+            &ParseErrorType::MalformedDate("X2024-02-03T04:05:06".to_string())
         );
         assert_eq!(
-            "Fbad".parse::<CalDateTime>().unwrap_err(),
-            ParseError::MalformedDate("fooFbad".to_string())
+            "fooFbad".parse::<CalDateTime>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("fooFbad".to_string())
         );
         assert_eq!(
-            "Ubad".parse::<CalDateTime>().unwrap_err(),
-            ParseError::MalformedDate("Ubad".to_string())
+            "Ubad".parse::<CalDateTime>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("Ubad".to_string())
         );
         assert_eq!(
-            "TEurope/Berlin;bad".parse::<CalDateTime>().unwrap_err(),
-            ParseError::MalformedDate("TEurope/Berlin;bad".to_string())
+            "TEurope/Berlin;bad"
+                .parse::<CalDateTime>()
+                .unwrap_err()
+                .ty(),
+            &ParseErrorType::MalformedDate("TEurope/Berlin;bad".to_string())
+        );
+
+        assert_eq!(
+            "Ubad".parse::<CalDateTime>().unwrap_err().ty(),
+            &ParseErrorType::MalformedDate("Ubad".to_string())
+        );
+        assert_eq!(
+            "TEurope/Berlin;bad"
+                .parse::<CalDateTime>()
+                .unwrap_err()
+                .ty(),
+            &ParseErrorType::MalformedDate("TEurope/Berlin;bad".to_string())
         );
     }
 
@@ -1168,32 +1194,36 @@ mod tests {
         );
 
         let short_err = CalDate::try_from(Property::new("DTSTART", vec![], "2024")).unwrap_err();
-        assert_eq!(short_err, ParseError::MalformedDate("2024".to_string()));
-
-        let malformed_err =
-            CalDate::try_from("DTSTART:20240203X040506".parse::<Property>().unwrap()).unwrap_err();
         assert_eq!(
-            malformed_err,
-            ParseError::MalformedDate("20240203X040506".to_string())
+            short_err.ty(),
+            &ParseErrorType::MalformedDate("2024".to_string())
+        );
+        let mid_err = "20240203X040506".parse::<CalDateTime>().unwrap_err();
+        assert_eq!(
+            mid_err.ty(),
+            &ParseErrorType::MalformedDate("20240203X040506".to_string())
         );
 
         let invalid_date_err =
             CalDate::try_from("DTSTART:20240230T040506".parse::<Property>().unwrap()).unwrap_err();
         assert_eq!(
-            invalid_date_err,
-            ParseError::InvalidDate("20240230T040506".to_string())
+            invalid_date_err.ty(),
+            &ParseErrorType::InvalidDate("20240230T040506".to_string())
         );
 
         let invalid_due_date_err =
             CalDate::try_from("DUE;VALUE=DATE:20240230".parse::<Property>().unwrap()).unwrap_err();
         assert_eq!(
-            invalid_due_date_err,
-            ParseError::InvalidDate("20240230".to_string())
+            invalid_due_date_err.ty(),
+            &ParseErrorType::InvalidDate("20240230".to_string())
         );
 
         let invalid_number_err =
             CalDate::try_from("DTSTART:abcd0203T040506".parse::<Property>().unwrap()).unwrap_err();
-        assert!(matches!(invalid_number_err, ParseError::InvalidNumber(_)));
+        assert!(matches!(
+            invalid_number_err.ty(),
+            ParseErrorType::InvalidNumber(_)
+        ));
     }
 
     // --- DST gap and fold validation ---

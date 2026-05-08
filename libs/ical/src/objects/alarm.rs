@@ -17,7 +17,8 @@ use crate::objects::{
     CalComponent, CalDate, CalDateTime, CalDuration, DateContext, EventLike, ResolvedDateTime,
 };
 use crate::parser::{
-    LineReader, Parameter, ParseError, Property, PropertyConsumer, PropertyProducer,
+    LineReader, LineResultExt, Parameter, ParseError, ParseErrorType, Property, PropertyConsumer,
+    PropertyProducer,
 };
 
 /// The action for VALARM components.
@@ -55,7 +56,9 @@ impl FromStr for CalAction {
             "AUDIO" => Ok(Self::Audio),
             "DISPLAY" => Ok(Self::Display),
             "EMAIL" => Ok(Self::Email),
-            _ => Err(ParseError::InvalidAction(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidAction(
+                s.to_string(),
+            ))),
         }
     }
 }
@@ -309,8 +312,11 @@ impl FromStr for CalAlarm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lines = LineReader::new(s.as_bytes());
-        lines.next().unwrap(); // skip BEGIN:VALARM
-        CalAlarm::from_lines(&mut lines, Property::new("", vec![], ""))
+        let begin_line = lines
+            .next()
+            .ok_or_else(|| ParseError::from(ParseErrorType::UnexpectedEOF))?;
+        let begin = Property::from_str_at(&begin_line, lines.line_num())?;
+        CalAlarm::from_lines(&mut lines, begin)
     }
 }
 
@@ -360,44 +366,30 @@ impl PropertyConsumer for CalAlarm {
     fn from_lines<R: BufRead>(
         lines: &mut LineReader<R>,
         _prop: Property,
-    ) -> Result<Self, ParseError>
-    where
-        Self: Sized,
-    {
-        let mut comp = Self::default();
-        loop {
-            let Some(line) = lines.next() else {
-                break Err(ParseError::UnexpectedEOF);
-            };
-
-            let prop = line.parse::<Property>()?;
+    ) -> Result<Self, ParseError> {
+        let mut alarm = Self::default();
+        while let Some(line) = lines.next() {
+            let prop = Property::from_str_at(&line, lines.line_num())?;
             match prop.name().as_str() {
+                "ACTION" => alarm.action = prop.take_value().parse().with_line(lines)?,
+                "TRIGGER" => alarm.trigger = CalTrigger::try_from(prop).with_line(lines)?,
+                "DESCRIPTION" => alarm.description = Some(prop.take_value()),
+                "DURATION" => alarm.duration = Some(prop.value().parse().with_line(lines)?),
+                "REPEAT" => alarm.repeat = Some(prop.value().parse::<u8>().with_line(lines)?),
                 "END" => {
-                    if prop.value() != "VALARM" {
-                        return Err(ParseError::UnexpectedEnd(prop.take_value()));
+                    if prop.value() == "VALARM" {
+                        return Ok(alarm);
                     }
-                    break Ok(comp);
+                    return Err(
+                        ParseError::from(ParseErrorType::UnexpectedEnd(prop.take_value()))
+                            .with_line(lines.line_num()),
+                    );
                 }
-                "ACTION" => {
-                    comp.action = prop.value().parse()?;
-                }
-                "TRIGGER" => {
-                    comp.trigger = prop.try_into()?;
-                }
-                "DESCRIPTION" => {
-                    comp.description = Some(prop.take_value());
-                }
-                "DURATION" => {
-                    comp.duration = Some(prop.value().parse()?);
-                }
-                "REPEAT" => {
-                    comp.repeat = Some(prop.value().parse()?);
-                }
-                _ => {
-                    comp.other.push(prop);
-                }
+                _ => alarm.other.push(prop),
             }
         }
+
+        Err(ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num()))
     }
 }
 
@@ -492,13 +484,31 @@ mod tests {
     #[test]
     fn duration_errors() {
         let dur = CalDuration::from_str("");
-        assert!(matches!(dur, Err(ParseError::InvalidDuration(_))));
+        assert!(matches!(
+            dur,
+            Err(ParseError {
+                ty: ParseErrorType::InvalidDuration(_),
+                ..
+            })
+        ));
 
         let dur = CalDuration::from_str("P2");
-        assert!(matches!(dur, Err(ParseError::InvalidDuration(_))));
+        assert!(matches!(
+            dur,
+            Err(ParseError {
+                ty: ParseErrorType::InvalidDuration(_),
+                ..
+            })
+        ));
 
         let dur = CalDuration::from_str("P2W1D");
-        assert!(matches!(dur, Err(ParseError::InvalidDuration(_))));
+        assert!(matches!(
+            dur,
+            Err(ParseError {
+                ty: ParseErrorType::InvalidDuration(_),
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -545,9 +555,8 @@ DESCRIPTION:Breakfast meeting with executive\n
   team at 8:30 AM EST.
 END:VALARM";
         let mut lines = LineReader::new(alarm_str.as_bytes());
-        lines.next().unwrap(); // skip BEGIN:VALARM
-        let alarm: CalAlarm =
-            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+        let begin = lines.next().unwrap().parse::<Property>().unwrap();
+        let alarm: CalAlarm = CalAlarm::from_lines(&mut lines, begin).unwrap();
         assert_eq!(
             alarm.trigger,
             CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Utc(
@@ -679,10 +688,15 @@ TRIGGER:-PT15M
 END:VEVENT
 ";
         let mut lines = LineReader::new(lines_str.as_bytes());
-        lines.next().unwrap();
-        let result: Result<CalAlarm, _> =
-            CalAlarm::from_lines(&mut lines, Property::new("", vec![], ""));
-        assert!(matches!(result, Err(ParseError::UnexpectedEnd(_))));
+        let begin = lines.next().unwrap().parse::<Property>().unwrap();
+        let result: Result<CalAlarm, _> = CalAlarm::from_lines(&mut lines, begin);
+        assert!(matches!(
+            result,
+            Err(ParseError {
+                ty: ParseErrorType::UnexpectedEnd(_),
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -694,9 +708,8 @@ X-CUSTOM:value
 END:VALARM
 ";
         let mut lines = LineReader::new(lines_str.as_bytes());
-        lines.next().unwrap();
-        let alarm: CalAlarm =
-            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+        let begin = lines.next().unwrap().parse::<Property>().unwrap();
+        let alarm = CalAlarm::from_lines(&mut lines, begin).unwrap();
         assert_eq!(alarm.other.len(), 1);
         let prop = &alarm.other[0];
         assert_eq!(prop.name(), "X-CUSTOM");
@@ -707,10 +720,15 @@ END:VALARM
     fn alarm_from_lines_eof() {
         let lines_str = "BEGIN:VALARM";
         let mut lines = LineReader::new(lines_str.as_bytes());
-        lines.next().unwrap();
-        let result: Result<CalAlarm, _> =
-            CalAlarm::from_lines(&mut lines, Property::new("", vec![], ""));
-        assert!(matches!(result, Err(ParseError::UnexpectedEOF)));
+        let begin = lines.next().unwrap().parse::<Property>().unwrap();
+        let result: Result<CalAlarm, _> = CalAlarm::from_lines(&mut lines, begin);
+        assert!(matches!(
+            result,
+            Err(ParseError {
+                ty: ParseErrorType::UnexpectedEOF,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -721,14 +739,14 @@ TRIGGER;TZID=Europe/Berlin:20250101T090000
 END:VALARM
 ";
         let mut lines = LineReader::new(lines_str.as_bytes());
-        lines.next().unwrap();
-        let alarm: CalAlarm =
-            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
-
-        assert!(matches!(
-            alarm.trigger(),
-            CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Timezone(_, _)))
-        ));
+        let begin = lines.next().unwrap().parse::<Property>().unwrap();
+        let alarm = CalAlarm::from_lines(&mut lines, begin).unwrap();
+        match alarm.trigger {
+            CalTrigger::Absolute(CalDate::DateTime(CalDateTime::Timezone(_, tzid))) => {
+                assert_eq!(tzid, "Europe/Berlin");
+            }
+            _ => panic!("Expected absolute trigger with TZID"),
+        }
     }
 
     #[test]
@@ -740,9 +758,8 @@ DURATION:PT5M
 END:VALARM
 ";
         let mut lines = LineReader::new(lines_str.as_bytes());
-        lines.next().unwrap();
-        let alarm: CalAlarm =
-            CalAlarm::from_lines(&mut lines, Property::new("", vec![], "")).unwrap();
+        let begin = lines.next().unwrap().parse::<Property>().unwrap();
+        let alarm = CalAlarm::from_lines(&mut lines, begin).unwrap();
 
         assert_eq!(alarm.duration(), Some(Duration::minutes(5).into()));
         assert_eq!(alarm.repeat, None);

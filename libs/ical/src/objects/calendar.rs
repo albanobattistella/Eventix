@@ -15,7 +15,8 @@ use crate::objects::{
     CalendarTimeZoneResolver, DateContext, EventLike,
 };
 use crate::parser::{
-    LineReader, LineWriter, ParseError, Property, PropertyConsumer, PropertyProducer,
+    LineReader, LineWriter, ParseError, ParseErrorType, Property, PropertyConsumer,
+    PropertyProducer,
 };
 
 /// Represents an iCalendar object.
@@ -416,28 +417,64 @@ impl PropertyConsumer for Calendar {
                 }
                 "BEGIN" if prop.value() == "VTODO" => match CalTodo::from_lines(lines, prop) {
                     Ok(todo) => cal.checked_add(CalComponent::Todo(todo)),
-                    Err(e @ ParseError::UnexpectedEOF) | Err(e @ ParseError::UnexpectedEnd(_)) => {
+                    Err(
+                        e @ ParseError {
+                            ty: ParseErrorType::UnexpectedEOF,
+                            ..
+                        },
+                    )
+                    | Err(
+                        e @ ParseError {
+                            ty: ParseErrorType::UnexpectedEnd(_),
+                            ..
+                        },
+                    ) => {
                         return Err(e);
                     }
                     Err(e) => warn!("ignoring malformed todo: {}", e),
                 },
                 "BEGIN" if prop.value() == "VEVENT" => match CalEvent::from_lines(lines, prop) {
                     Ok(ev) => cal.checked_add(CalComponent::Event(ev)),
-                    Err(e @ ParseError::UnexpectedEOF) | Err(e @ ParseError::UnexpectedEnd(_)) => {
+                    Err(
+                        e @ ParseError {
+                            ty: ParseErrorType::UnexpectedEOF,
+                            ..
+                        },
+                    )
+                    | Err(
+                        e @ ParseError {
+                            ty: ParseErrorType::UnexpectedEnd(_),
+                            ..
+                        },
+                    ) => {
                         return Err(e);
                     }
                     Err(e) => warn!("ignoring malformed event: {}", e),
                 },
                 "BEGIN" => match Unknown::from_lines(lines, prop) {
                     Ok(other) => cal.unknown.push(other),
-                    Err(e @ ParseError::UnexpectedEOF) | Err(e @ ParseError::UnexpectedEnd(_)) => {
+                    Err(
+                        e @ ParseError {
+                            ty: ParseErrorType::UnexpectedEOF,
+                            ..
+                        },
+                    )
+                    | Err(
+                        e @ ParseError {
+                            ty: ParseErrorType::UnexpectedEnd(_),
+                            ..
+                        },
+                    ) => {
                         return Err(e);
                     }
                     Err(e) => warn!("ignoring unknown component: {}", e),
                 },
                 "END" => {
                     if prop.value() != "VCALENDAR" {
-                        return Err(ParseError::UnexpectedEnd(prop.take_value()));
+                        return Err(ParseError::from(ParseErrorType::UnexpectedEnd(
+                            prop.take_value(),
+                        ))
+                        .with_line(lines.line_num()));
                     }
                     cal.minimize_overrides();
                     break Ok(cal);
@@ -518,7 +555,7 @@ impl FromStr for Calendar {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lines = LineReader::new(s.as_bytes());
         let Some(line) = lines.next() else {
-            return Err(ParseError::UnexpectedEOF);
+            return Err(ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num()));
         };
 
         let prop = line.parse::<Property>()?;
@@ -527,7 +564,10 @@ impl FromStr for Calendar {
                 let cal = Calendar::from_lines(&mut lines, prop)?;
                 Ok(cal)
             }
-            _ => Err(ParseError::UnexpectedProp(prop.name().to_string())),
+            _ => Err(
+                ParseError::from(ParseErrorType::UnexpectedProp(prop.name().to_string()))
+                    .with_line(lines.line_num()),
+            ),
         }
     }
 }
@@ -568,7 +608,9 @@ impl PropertyConsumer for Unknown {
         let mut other = Unknown::new(prop.take_value());
         loop {
             let Some(line) = lines.next() else {
-                break Err(ParseError::UnexpectedEOF);
+                break Err(
+                    ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num())
+                );
             };
 
             let prop = line.parse::<Property>()?;
@@ -594,7 +636,7 @@ mod tests {
 
     use crate::{
         objects::{CalComponent, CalDate, CalDateTime, Calendar, EventLike, UpdatableEventLike},
-        parser::{ParseError, Property, PropertyProducer},
+        parser::{ParseError, ParseErrorType, Property, PropertyProducer},
     };
 
     #[test]
@@ -988,7 +1030,7 @@ END:VCALENDAR\n"; // missing END:VALARM
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEnd(val)) if val == "VEVENT"),
+            matches!(res, Err(ParseError { ty: ParseErrorType::UnexpectedEnd(val), .. }) if val == "VEVENT"),
             "Expected UnexpectedEnd(\"VEVENT\") when END:VALARM is missing"
         );
     }
@@ -1009,7 +1051,7 @@ END:VCALENDAR\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEnd(val)) if val == "VALARM"),
+            matches!(res, Err(ParseError { ty: ParseErrorType::UnexpectedEnd(val), .. }) if val == "VALARM"),
             "Expected UnexpectedEnd(\"VALARM\") to propagate"
         );
     }
@@ -1022,7 +1064,13 @@ UID:test\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEOF)),
+            matches!(
+                res,
+                Err(ParseError {
+                    ty: ParseErrorType::UnexpectedEOF,
+                    ..
+                })
+            ),
             "Expected UnexpectedEOF for incomplete VEVENT"
         );
     }
@@ -1037,7 +1085,13 @@ END:VCALENDAR\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEOF)),
+            matches!(
+                res,
+                Err(ParseError {
+                    ty: ParseErrorType::UnexpectedEOF,
+                    ..
+                })
+            ),
             "Expected UnexpectedEOF for wrong VEVENT end"
         );
     }
@@ -1050,7 +1104,13 @@ UID:test\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEOF)),
+            matches!(
+                res,
+                Err(ParseError {
+                    ty: ParseErrorType::UnexpectedEOF,
+                    ..
+                })
+            ),
             "Expected UnexpectedEOF for incomplete VTODO"
         );
     }
@@ -1065,7 +1125,7 @@ END:VCALENDAR\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEnd(val)) if val == "VEVENT"),
+            matches!(res, Err(ParseError { ty: ParseErrorType::UnexpectedEnd(val), .. }) if val == "VEVENT"),
             "Expected UnexpectedEnd(\"VEVENT\") for wrong VTODO end"
         );
     }
@@ -1100,7 +1160,13 @@ BAR:1\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEOF)),
+            matches!(
+                res,
+                Err(ParseError {
+                    ty: ParseErrorType::UnexpectedEOF,
+                    ..
+                })
+            ),
             "Expected UnexpectedEOF for incomplete unknown component"
         );
     }
@@ -1114,7 +1180,13 @@ END:VCALENDAR\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedEOF)),
+            matches!(
+                res,
+                Err(ParseError {
+                    ty: ParseErrorType::UnexpectedEOF,
+                    ..
+                })
+            ),
             "Expected UnexpectedEOF for wrong unknown component end"
         );
     }
@@ -1125,7 +1197,7 @@ END:VCALENDAR\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedProp(val)) if val == "BEGIN"),
+            matches!(res, Err(ParseError { ty: ParseErrorType::UnexpectedProp(val), .. }) if val == "BEGIN"),
             "Expected UnexpectedProp(\"BEGIN\") when VCALENDAR is missing"
         );
     }
@@ -1136,7 +1208,7 @@ END:VCALENDAR\n";
 
         let res = input.parse::<Calendar>();
         assert!(
-            matches!(res, Err(ParseError::UnexpectedProp(val)) if val == "END"),
+            matches!(res, Err(ParseError { ty: ParseErrorType::UnexpectedProp(val), .. }) if val == "END"),
             "Expected UnexpectedProp(\"END\") before VCALENDAR"
         );
     }

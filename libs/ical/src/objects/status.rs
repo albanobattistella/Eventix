@@ -6,7 +6,7 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::parser::ParseError;
+use crate::parser::{ParseError, ParseErrorType};
 
 /// Represents the status of a TODO item.
 ///
@@ -57,7 +57,9 @@ impl FromStr for CalTodoStatus {
             "COMPLETED" => Ok(Self::Completed),
             "IN-PROCESS" => Ok(Self::InProcess),
             "CANCELLED" => Ok(Self::Cancelled),
-            _ => Err(ParseError::InvalidStatus(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidStatus(
+                s.to_string(),
+            ))),
         }
     }
 }
@@ -100,7 +102,9 @@ impl FromStr for CalEventStatus {
             "TENTATIVE" => Ok(Self::Tentative),
             "CANCELLED" => Ok(Self::Cancelled),
             "CONFIRMED" => Ok(Self::Confirmed),
-            _ => Err(ParseError::InvalidStatus(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidStatus(
+                s.to_string(),
+            ))),
         }
     }
 }
@@ -119,7 +123,7 @@ impl fmt::Display for CalEventStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::ParseError;
+    use crate::parser::ParseErrorType;
 
     #[test]
     fn todo_from_str_and_display_and_serde_roundtrip() {
@@ -157,7 +161,10 @@ mod tests {
 
         // Invalid status returns a specific ParseError::InvalidStatus
         let err = CalTodoStatus::from_str("not-a-status").unwrap_err();
-        assert_eq!(err, ParseError::InvalidStatus("not-a-status".to_string()));
+        assert_eq!(
+            err,
+            ParseError::from(ParseErrorType::InvalidStatus("not-a-status".to_string()))
+        );
     }
 
     #[test]
@@ -173,6 +180,9 @@ mod tests {
 
         // invalid
         let err = CalEventStatus::from_str("foo").unwrap_err();
-        assert_eq!(err, ParseError::InvalidStatus("foo".to_string()));
+        assert_eq!(
+            err,
+            ParseError::from(ParseErrorType::InvalidStatus("foo".to_string()))
+        );
     }
 }

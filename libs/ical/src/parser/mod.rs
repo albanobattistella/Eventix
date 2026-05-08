@@ -29,7 +29,37 @@ pub use self::prop::{Parameter, Property, PropertyConsumer, PropertyProducer};
 
 /// Errors that occur during parsing of iCalendar objects.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
-pub enum ParseError {
+#[error("Parse error in line {line}: {ty}")]
+pub struct ParseError {
+    pub line: usize,
+    pub ty: ParseErrorType,
+}
+
+impl ParseError {
+    pub fn new(line: usize, ty: ParseErrorType) -> Self {
+        Self { line, ty }
+    }
+
+    /// Returns the error type.
+    pub fn ty(&self) -> &ParseErrorType {
+        &self.ty
+    }
+
+    /// Returns the line number where the error occurred.
+    pub fn line_num(&self) -> usize {
+        self.line
+    }
+
+    /// Sets the line number of this error.
+    pub fn with_line(mut self, line: usize) -> Self {
+        self.line = line;
+        self
+    }
+}
+
+/// The type of error that occurred during parsing.
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum ParseErrorType {
     #[error("Missing name end")]
     MissingNameEnd,
     #[error("Missing parameter end")]
@@ -86,8 +116,30 @@ pub enum ParseError {
     AmbiguousTime(String),
 }
 
+impl From<ParseErrorType> for ParseError {
+    fn from(error_type: ParseErrorType) -> Self {
+        Self {
+            line: 0,
+            ty: error_type,
+        }
+    }
+}
+
 impl From<ParseIntError> for ParseError {
     fn from(err: ParseIntError) -> Self {
-        ParseError::InvalidNumber(err)
+        ParseError::from(ParseErrorType::InvalidNumber(err))
+    }
+}
+
+/// A wrapper around a [`LineReader`] and a [`ParseError`] that allows to easily return errors with
+/// line numbers.
+pub trait LineResultExt<T> {
+    /// Maps the error to include the current line number of the given [`LineReader`].
+    fn with_line<R: std::io::BufRead>(self, reader: &LineReader<R>) -> Result<T, ParseError>;
+}
+
+impl<T, E: Into<ParseError>> LineResultExt<T> for Result<T, E> {
+    fn with_line<R: std::io::BufRead>(self, reader: &LineReader<R>) -> Result<T, ParseError> {
+        self.map_err(|e| e.into().with_line(reader.line_num()))
     }
 }
