@@ -18,6 +18,7 @@ use crate::parser::{
     LineReader, LineWriter, ParseError, ParseErrorType, Property, PropertyConsumer,
     PropertyProducer,
 };
+use crate::util;
 
 /// Represents an iCalendar object.
 ///
@@ -431,7 +432,10 @@ impl PropertyConsumer for Calendar {
                     ) => {
                         return Err(e);
                     }
-                    Err(e) => warn!("ignoring malformed todo: {}", e),
+                    Err(e) => {
+                        warn!("ignoring malformed todo: {}", e);
+                        util::ignore_until_end(lines, "VTODO")?;
+                    }
                 },
                 "BEGIN" if prop.value() == "VEVENT" => match CalEvent::from_lines(lines, prop) {
                     Ok(ev) => cal.checked_add(CalComponent::Event(ev)),
@@ -449,26 +453,35 @@ impl PropertyConsumer for Calendar {
                     ) => {
                         return Err(e);
                     }
-                    Err(e) => warn!("ignoring malformed event: {}", e),
-                },
-                "BEGIN" => match Unknown::from_lines(lines, prop) {
-                    Ok(other) => cal.unknown.push(other),
-                    Err(
-                        e @ ParseError {
-                            ty: ParseErrorType::UnexpectedEOF,
-                            ..
-                        },
-                    )
-                    | Err(
-                        e @ ParseError {
-                            ty: ParseErrorType::UnexpectedEnd(_),
-                            ..
-                        },
-                    ) => {
-                        return Err(e);
+                    Err(e) => {
+                        warn!("ignoring malformed event: {}", e);
+                        util::ignore_until_end(lines, "VEVENT")?;
                     }
-                    Err(e) => warn!("ignoring unknown component: {}", e),
                 },
+                "BEGIN" => {
+                    let name = prop.value().clone();
+                    match Unknown::from_lines(lines, prop) {
+                        Ok(other) => cal.unknown.push(other),
+                        Err(
+                            e @ ParseError {
+                                ty: ParseErrorType::UnexpectedEOF,
+                                ..
+                            },
+                        )
+                        | Err(
+                            e @ ParseError {
+                                ty: ParseErrorType::UnexpectedEnd(_),
+                                ..
+                            },
+                        ) => {
+                            return Err(e);
+                        }
+                        Err(e) => {
+                            warn!("ignoring unknown component: {}", e);
+                            util::ignore_until_end(lines, &name)?;
+                        }
+                    }
+                }
                 "END" => {
                     if prop.value() != "VCALENDAR" {
                         return Err(ParseError::from(ParseErrorType::UnexpectedEnd(

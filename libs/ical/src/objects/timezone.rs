@@ -747,7 +747,12 @@ mod tests {
 
     fn parse_timezone(input: &str) -> Result<CalTimeZone, ParseError> {
         let mut reader = LineReader::new(Cursor::new(input.as_bytes()));
-        CalTimeZone::from_lines(&mut reader, Property::new("BEGIN", vec![], "VTIMEZONE"))
+        CalTimeZone::from_lines(&mut reader, Property::new("BEGIN", vec![], "VTIMEZONE")).and_then(
+            |res| {
+                res.validate()?;
+                Ok(res)
+            },
+        )
     }
 
     #[test]

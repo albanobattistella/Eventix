@@ -207,23 +207,7 @@ impl EventLikeComponent {
                     Err(e) => {
                         warn!("ignoring malformed alarm: {}", e);
                         // Drain remaining lines until matching END:VALARM
-                        loop {
-                            let Some(line) = lines.next() else {
-                                return Err(ParseError::from(ParseErrorType::UnexpectedEOF)
-                                    .with_line(lines.line_num()));
-                            };
-                            let prop = Property::from_str_at(&line, lines.line_num())?;
-                            if prop.name() == "END" {
-                                if prop.value() == "VALARM" {
-                                    break;
-                                } else {
-                                    return Err(ParseError::from(ParseErrorType::UnexpectedEnd(
-                                        prop.take_value(),
-                                    ))
-                                    .with_line(lines.line_num()));
-                                }
-                            }
-                        }
+                        util::ignore_until_end(lines, "VALARM")?;
                     }
                 }
             }
