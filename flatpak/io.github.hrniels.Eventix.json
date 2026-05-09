@@ -82,7 +82,7 @@
                 {
                     "type": "git",
                     "url": "https://github.com/hrniels/eventix.git",
-                    "commit": "8b8e64deafee69182077a52fd9e02fead7259401",
+                    "tag": "v1.0.2",
                     "disable-submodules": true
                 }
             ]
