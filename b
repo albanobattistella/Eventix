@@ -369,7 +369,7 @@ def _create_archives(app_id):
     # 1. Eventix (core)
     subprocess.run([
         "tar", "czf", "flatpak/eventix.tar.gz",
-        "--exclude=contrib",
+        "--exclude=./contrib",
         # put everything into a subdirectory
         "--transform=s#^#eventix/#",
         ".git", "bin", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
