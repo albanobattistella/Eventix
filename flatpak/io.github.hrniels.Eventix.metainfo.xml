@@ -56,6 +56,15 @@
   </screenshots>
 
   <releases>
+    <release version="1.0.3" date="2026-05-09">
+      <description>
+        <ul>
+          <li>Added screenshots.</li>
+          <li>Added line information to parse errors in ical crate.</li>
+          <li>Fixed bug in flatpak image creation.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.2" date="2026-05-07">
       <description>
         <ul>
