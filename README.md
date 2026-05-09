@@ -21,6 +21,15 @@ window with system tray integration.
 - XDG-compliant configuration and data storage
 - Flatpak packaging (`io.github.hrniels.Eventix`)
 
+## Screenshots
+
+| | |
+|:---:|:---:|
+| ![weekly](data/screenshots/weekly.png) | ![weekly-details](data/screenshots/weekly-details.png) |
+| ![monthly](data/screenshots/monthly.png) | ![new-event1](data/screenshots/new-event1.png) |
+| ![new-event2](data/screenshots/new-event2.png) | ![list](data/screenshots/list.png) |
+| ![calendars](data/screenshots/calendars.png) | ![new-collection](data/screenshots/new-collection.png) |
+
 ## Installation
 
 Eventix is intended to be run as a Flatpak application. The flatpak package can be built and
