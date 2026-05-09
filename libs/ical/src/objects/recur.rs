@@ -13,7 +13,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::objects::{CalDate, CalLocale, DateContext};
-use crate::parser::{ParseError, Property};
+use crate::parser::{ParseError, ParseErrorType, Property};
 use crate::util;
 
 /// The frequency for recurrences.
@@ -74,7 +74,9 @@ impl FromStr for CalRRuleFreq {
             "WEEKLY" => Ok(Self::Weekly),
             "MONTHLY" => Ok(Self::Monthly),
             "YEARLY" => Ok(Self::Yearly),
-            _ => Err(ParseError::InvalidFrequency(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidFrequency(
+                s.to_string(),
+            ))),
         }
     }
 }
@@ -99,7 +101,7 @@ impl FromStr for CalRRuleSide {
         match s.as_bytes()[0] {
             b'+' => Ok(Self::Start),
             b'-' => Ok(Self::End),
-            _ => Err(ParseError::InvalidSide(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidSide(s.to_string()))),
         }
     }
 }
@@ -127,7 +129,9 @@ impl CalWDayDesc {
             "TH" => Ok(Weekday::Thu),
             "FR" => Ok(Weekday::Fri),
             "SA" => Ok(Weekday::Sat),
-            _ => Err(ParseError::InvalidWeekday(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidWeekday(
+                s.to_string(),
+            ))),
         }
     }
 
@@ -259,7 +263,7 @@ impl FromStr for CalWDayDesc {
         };
 
         if s.is_empty() {
-            return Err(ParseError::UnexpectedWDayEnd);
+            return Err(ParseError::from(ParseErrorType::UnexpectedWDayEnd));
         }
 
         let mut rest = s;
@@ -1374,7 +1378,9 @@ impl FromStr for CalRRule {
         for part in s.split(';') {
             let mut name_value = part.splitn(2, '=');
             let name = name_value.next().unwrap();
-            let value = name_value.next().ok_or(ParseError::MissingParamValue)?;
+            let value = name_value
+                .next()
+                .ok_or(ParseError::from(ParseErrorType::MissingParamValue))?;
             match name {
                 "FREQ" => {
                     rrule.freq = value.parse()?;
@@ -1420,31 +1426,37 @@ impl FromStr for CalRRule {
                 "WKST" => {
                     rrule.week_start = Some(CalWDayDesc::parse_weekday(value)?);
                 }
-                _ => return Err(ParseError::UnexpectedRRule(name.to_string())),
+                _ => {
+                    return Err(ParseError::from(ParseErrorType::UnexpectedRRule(
+                        name.to_string(),
+                    )));
+                }
             }
         }
 
         if !seen_freq {
-            return Err(ParseError::UnexpectedRRule("Missing FREQ".to_string()));
+            return Err(ParseError::from(ParseErrorType::UnexpectedRRule(
+                "Missing FREQ".to_string(),
+            )));
         }
 
         if rrule.count.is_some() && rrule.until.is_some() {
-            return Err(ParseError::UnexpectedRRule(
+            return Err(ParseError::from(ParseErrorType::UnexpectedRRule(
                 "COUNT and UNTIL must not both be present".to_string(),
-            ));
+            )));
         }
 
         if let Some(by_set_pos) = &rrule.by_set_pos {
             if !rrule.has_any_by() {
-                return Err(ParseError::UnexpectedRRule(
+                return Err(ParseError::from(ParseErrorType::UnexpectedRRule(
                     "BYSETPOS must be used with another BYxxx rule".to_string(),
-                ));
+                )));
             }
             for pos in by_set_pos {
                 if pos.num == 0 || pos.num > 366 {
-                    return Err(ParseError::UnexpectedRRule(
+                    return Err(ParseError::from(ParseErrorType::UnexpectedRRule(
                         "BYSETPOS must be in range 1..366 or -1..-366".to_string(),
-                    ));
+                    )));
                 }
             }
         }

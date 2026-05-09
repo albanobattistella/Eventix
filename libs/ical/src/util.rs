@@ -4,14 +4,20 @@
 
 //! Utility functions.
 
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    io::BufRead,
+};
 
 use formatx::formatx;
 
 use chrono::{DateTime, Datelike, Duration, MappedLocalTime, NaiveDate, TimeZone, Weekday};
 use chrono_tz::Tz;
 
-use crate::objects::CalLocale;
+use crate::{
+    objects::CalLocale,
+    parser::{LineReader, ParseError, ParseErrorType, Property},
+};
 
 /// Returns the part after a `mailto:` URI scheme, matched ASCII-case-insensitively.
 pub fn strip_mailto_prefix(address: &str) -> Option<&str> {
@@ -356,6 +362,34 @@ pub(crate) fn split_escaped_commas(value: &str) -> Vec<String> {
     items
 }
 
+pub fn ignore_until_end<R: BufRead>(
+    lines: &mut LineReader<R>,
+    name: &str,
+) -> Result<(), ParseError> {
+    let mut stack = vec![name.to_string()];
+    loop {
+        let Some(line) = lines.next() else {
+            break Err(ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num()));
+        };
+        let prop = Property::from_str_at(&line, lines.line_num())?;
+        if prop.name() == "BEGIN" {
+            stack.push(prop.take_value());
+        } else if prop.name() == "END" {
+            let expected = stack.pop().unwrap();
+            if prop.value() == &expected {
+                if stack.is_empty() {
+                    break Ok(());
+                }
+            } else {
+                break Err(
+                    ParseError::from(ParseErrorType::UnexpectedEnd(prop.take_value()))
+                        .with_line(lines.line_num()),
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,5 +492,28 @@ mod tests {
         assert_eq!(result.month(), 3);
         assert_eq!(result.hour(), 3);
         assert_eq!(result.minute(), 0);
+    }
+
+    #[test]
+    fn test_ignore_until_end_nested() {
+        use crate::parser::LineReader;
+        let data = "BEGIN:VEVENT\nSUMMARY:Nested\nBEGIN:VALARM\nTRIGGER:-PT15M\nEND:VALARM\nEND:VEVENT\nSUMMARY:After";
+        let mut reader = LineReader::new(data.as_bytes());
+        // Skip first line to simulate being inside VEVENT
+        reader.next();
+        assert!(ignore_until_end(&mut reader, "VEVENT").is_ok());
+        // Check that we are at the line after END:VEVENT
+        let next_line = reader.next().unwrap();
+        assert!(next_line.starts_with("SUMMARY:After"));
+    }
+
+    #[test]
+    fn test_ignore_until_end_mismatch() {
+        use crate::parser::LineReader;
+        let data = "BEGIN:VEVENT\nBEGIN:VALARM\nEND:VEVENT";
+        let mut reader = LineReader::new(data.as_bytes());
+        reader.next();
+        let res = ignore_until_end(&mut reader, "VEVENT");
+        assert!(res.is_err());
     }
 }

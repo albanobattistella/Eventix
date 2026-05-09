@@ -6,7 +6,10 @@ use std::io::BufRead;
 use std::ops::{Deref, DerefMut};
 
 use crate::objects::{CalDate, CalTodoStatus, EventLikeComponent};
-use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
+use crate::parser::{
+    LineReader, LineResultExt, ParseError, ParseErrorType, Property, PropertyConsumer,
+    PropertyProducer,
+};
 
 use super::CalCompType;
 
@@ -169,32 +172,40 @@ impl PropertyConsumer for CalTodo {
         let mut comp = Self::new_empty();
         loop {
             let Some(line) = lines.next() else {
-                break Err(ParseError::UnexpectedEOF);
+                break Err(
+                    ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num())
+                );
             };
 
-            let prop = line.parse::<Property>()?;
+            let prop = Property::from_str_at(&line, lines.line_num())?;
             match prop.name().as_str() {
                 "END" => {
                     if prop.value() != "VTODO" {
-                        return Err(ParseError::UnexpectedEnd(prop.take_value()));
+                        return Err(ParseError::from(ParseErrorType::UnexpectedEnd(
+                            prop.take_value(),
+                        ))
+                        .with_line(lines.line_num()));
                     }
                     break Ok(comp);
                 }
                 "COMPLETED" => {
-                    comp.completed = Some(prop.try_into()?);
+                    comp.completed = Some(prop.try_into().with_line(lines)?);
                 }
                 "DUE" => {
-                    comp.due = Some(prop.try_into()?);
+                    comp.due = Some(prop.try_into().with_line(lines)?);
                 }
                 "STATUS" => {
-                    comp.status = Some(prop.value().parse()?);
+                    comp.status = Some(prop.value().parse().with_line(lines)?);
                 }
                 "PERCENT-COMPLETE" => {
-                    let percent = prop.value().parse()?;
-                    if percent > 100 {
-                        return Err(ParseError::InvalidPercent(percent));
+                    let percent: i32 = prop.value().parse().with_line(lines)?;
+                    if !(0..=100).contains(&percent) {
+                        return Err(ParseError::from(ParseErrorType::InvalidPercent(
+                            percent as u8,
+                        ))
+                        .with_line(lines.line_num()));
                     }
-                    comp.percent = Some(percent);
+                    comp.percent = Some(percent as u8);
                 }
                 _ => {
                     comp.inner.parse_prop(lines, prop)?;
@@ -212,7 +223,9 @@ mod tests {
     use crate::objects::{
         CalDate, CalDateTime, CalDateType, CalTodo, CalTodoStatus, Calendar, EventLike,
     };
-    use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
+    use crate::parser::{
+        LineReader, ParseError, ParseErrorType, Property, PropertyConsumer, PropertyProducer,
+    };
 
     #[test]
     fn basics() {
@@ -321,12 +334,15 @@ END:VCALENDAR";
         let mut lines = LineReader::new("PERCENT-COMPLETE:101\nEND:VTODO\n".as_bytes());
         let begin = "BEGIN:VTODO".parse::<Property>().unwrap();
         let err = CalTodo::from_lines(&mut lines, begin).unwrap_err();
-        assert_eq!(err, ParseError::InvalidPercent(101));
+        assert_eq!(err, ParseError::new(1, ParseErrorType::InvalidPercent(101)));
 
         // unexpected END value
         let mut lines2 = LineReader::new("END:VEVENT\n".as_bytes());
         let begin2 = "BEGIN:VTODO".parse::<Property>().unwrap();
         let err2 = CalTodo::from_lines(&mut lines2, begin2).unwrap_err();
-        assert_eq!(err2, ParseError::UnexpectedEnd(String::from("VEVENT")));
+        assert_eq!(
+            err2,
+            ParseError::new(1, ParseErrorType::UnexpectedEnd(String::from("VEVENT")))
+        );
     }
 }

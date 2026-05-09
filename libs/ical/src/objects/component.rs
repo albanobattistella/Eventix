@@ -15,7 +15,10 @@ use crate::objects::{
     CalTodo, CalendarTimeZoneResolver, DateContext, EventLike, ResolvedDateTime,
     UpdatableEventLike,
 };
-use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
+use crate::parser::{
+    LineReader, LineResultExt, ParseError, ParseErrorType, Property, PropertyConsumer,
+    PropertyProducer,
+};
 use crate::util;
 
 /// Represents the low priority (9)
@@ -115,26 +118,27 @@ impl EventLikeComponent {
                 self.uid = prop.take_value();
             }
             "CREATED" => {
-                self.created = Some(prop.try_into()?);
+                self.created = Some(prop.try_into().with_line(lines)?);
             }
             "LAST-MODIFIED" => {
-                self.last_mod = Some(prop.try_into()?);
+                self.last_mod = Some(prop.try_into().with_line(lines)?);
             }
             "DTSTAMP" => {
-                self.stamp = prop.try_into()?;
+                self.stamp = prop.try_into().with_line(lines)?;
             }
             "SEQUENCE" => {
-                let sequence = prop.value().parse::<i64>()?;
+                let sequence = prop.value().parse::<i64>().with_line(lines)?;
                 if sequence < 0 || sequence > u32::MAX as i64 {
-                    return Err(ParseError::InvalidSequence(sequence));
+                    return Err(ParseError::from(ParseErrorType::InvalidSequence(sequence))
+                        .with_line(lines.line_num()));
                 }
                 self.sequence = Some(sequence as u32);
             }
             "DTSTART" => {
-                self.start = Some(prop.try_into()?);
+                self.start = Some(prop.try_into().with_line(lines)?);
             }
             "DURATION" => {
-                self.duration = Some(prop.take_value().parse()?);
+                self.duration = Some(prop.take_value().parse().with_line(lines)?);
             }
             "SUMMARY" => {
                 self.summary = Some(prop.take_value());
@@ -149,10 +153,10 @@ impl EventLikeComponent {
                 self.categories = Some(util::split_escaped_commas(prop.value()));
             }
             "ORGANIZER" => {
-                self.organizer = Some(prop.try_into()?);
+                self.organizer = Some(prop.try_into().with_line(lines)?);
             }
             "ATTENDEE" => {
-                let att: CalAttendee = prop.try_into()?;
+                let att: CalAttendee = prop.try_into().with_line(lines)?;
                 if self.attendees.is_none() {
                     self.attendees = Some(vec![]);
                 }
@@ -169,25 +173,29 @@ impl EventLikeComponent {
             "EXDATE" => {
                 for date in prop.value().split(',') {
                     let dateprop = Property::new(prop.name(), prop.params().to_vec(), date);
-                    self.exdates.push(dateprop.try_into()?);
+                    self.exdates.push(dateprop.try_into().with_line(lines)?);
                 }
             }
             "PRIORITY" => {
-                let prio = prop.value().parse()?;
+                let prio = prop.value().parse().with_line(lines)?;
                 if prio >= 10 {
-                    return Err(ParseError::InvalidPriority(prio));
+                    return Err(ParseError::from(ParseErrorType::InvalidPriority(prio))
+                        .with_line(lines.line_num()));
                 }
                 self.priority = Some(prio);
             }
             "RRULE" => {
-                self.rrule = Some(prop.value().parse()?);
+                self.rrule = Some(prop.value().parse().with_line(lines)?);
             }
             "RECURRENCE-ID" => {
-                self.rid = Some(prop.try_into()?);
+                self.rid = Some(prop.try_into().with_line(lines)?);
             }
             "BEGIN" => {
                 if prop.value() != "VALARM" {
-                    return Err(ParseError::UnexpectedBegin(prop.take_value()));
+                    return Err(ParseError::from(ParseErrorType::UnexpectedBegin(
+                        prop.take_value(),
+                    ))
+                    .with_line(lines.line_num()));
                 }
                 match CalAlarm::from_lines(lines, prop) {
                     Ok(alarm) => {
@@ -199,19 +207,7 @@ impl EventLikeComponent {
                     Err(e) => {
                         warn!("ignoring malformed alarm: {}", e);
                         // Drain remaining lines until matching END:VALARM
-                        loop {
-                            let Some(line) = lines.next() else {
-                                return Err(ParseError::UnexpectedEOF);
-                            };
-                            let prop = line.parse::<Property>()?;
-                            if prop.name() == "END" {
-                                if prop.value() == "VALARM" {
-                                    break;
-                                } else {
-                                    return Err(ParseError::UnexpectedEnd(prop.take_value()));
-                                }
-                            }
-                        }
+                        util::ignore_until_end(lines, "VALARM")?;
                     }
                 }
             }
@@ -1076,7 +1072,7 @@ mod tests {
     use chrono_tz::UTC;
 
     use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, DateContext, EventLike};
-    use crate::parser::{LineReader, ParseError, Property, PropertyProducer};
+    use crate::parser::{LineReader, ParseError, ParseErrorType, Property, PropertyProducer};
 
     use super::{CalCompType, EventLikeComponent};
 
@@ -1193,7 +1189,7 @@ mod tests {
         let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
         let err = parse_prop_line(&mut comp, "SEQUENCE:-1").unwrap_err();
 
-        assert_eq!(err, ParseError::InvalidSequence(-1));
+        assert_eq!(err, ParseError::from(ParseErrorType::InvalidSequence(-1)));
     }
 
     #[test]
@@ -1203,30 +1199,36 @@ mod tests {
         let non_alarm_err = parse_prop_line(&mut comp, "BEGIN:VEVENT").unwrap_err();
         assert_eq!(
             non_alarm_err,
-            ParseError::UnexpectedBegin(String::from("VEVENT"))
+            ParseError::from(ParseErrorType::UnexpectedBegin(String::from("VEVENT")))
         );
 
         let mut wrong_end_lines = LineReader::new("TRIGGER:not-a-date\nEND:VEVENT\n".as_bytes());
         let wrong_end = comp
             .parse_prop(
                 &mut wrong_end_lines,
-                "BEGIN:VALARM".parse::<Property>().unwrap(),
+                Property::from_str_at("BEGIN:VALARM", 0).unwrap(),
             )
             .unwrap_err();
-        assert_eq!(wrong_end, ParseError::UnexpectedEnd(String::from("VEVENT")));
+        assert_eq!(
+            wrong_end,
+            ParseError::new(2, ParseErrorType::UnexpectedEnd(String::from("VEVENT")))
+        );
 
         let mut eof_lines = LineReader::new("TRIGGER:not-a-date\n".as_bytes());
         let eof = comp
-            .parse_prop(&mut eof_lines, "BEGIN:VALARM".parse::<Property>().unwrap())
+            .parse_prop(
+                &mut eof_lines,
+                Property::from_str_at("BEGIN:VALARM", 0).unwrap(),
+            )
             .unwrap_err();
-        assert_eq!(eof, ParseError::UnexpectedEOF);
+        assert_eq!(eof, ParseError::new(1, ParseErrorType::UnexpectedEOF));
     }
 
     #[test]
     fn parse_prop_rejects_invalid_priority() {
         let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
         let err = parse_prop_line(&mut comp, "PRIORITY:10").unwrap_err();
-        assert_eq!(err, ParseError::InvalidPriority(10));
+        assert_eq!(err, ParseError::from(ParseErrorType::InvalidPriority(10)));
     }
 
     #[test]

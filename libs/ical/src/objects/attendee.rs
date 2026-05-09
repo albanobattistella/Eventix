@@ -6,7 +6,7 @@ use std::{fmt, str::FromStr};
 
 use tracing::warn;
 
-use crate::parser::{Parameter, ParseError, Property};
+use crate::parser::{Parameter, ParseError, ParseErrorType, Property};
 use crate::util;
 
 /// The participation role
@@ -45,7 +45,7 @@ impl FromStr for CalRole {
             "REQ-PARTICIPANT" => Ok(Self::Required),
             "OPT-PARTICIPANT" => Ok(Self::Optional),
             "NON-PARTICIPANT" => Ok(Self::None),
-            _ => Err(ParseError::InvalidRole(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidRole(s.to_string()))),
         }
     }
 }
@@ -98,7 +98,9 @@ impl FromStr for CalPartStat {
             "DELEGATED" => Ok(Self::Delegated),
             "COMPLETED" => Ok(Self::Completed),
             "IN-PROCESS" => Ok(Self::InProcess),
-            _ => Err(ParseError::InvalidStatus(s.to_string())),
+            _ => Err(ParseError::from(ParseErrorType::InvalidStatus(
+                s.to_string(),
+            ))),
         }
     }
 }

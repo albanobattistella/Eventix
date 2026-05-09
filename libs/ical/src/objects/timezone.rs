@@ -10,7 +10,10 @@ use chrono::{Datelike, Duration, FixedOffset, NaiveDateTime, Offset, TimeZone, U
 use chrono_tz::{OffsetComponents, OffsetName, Tz};
 
 use crate::objects::{CalDate, CalDateTime, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc};
-use crate::parser::{LineReader, ParseError, Property, PropertyConsumer, PropertyProducer};
+use crate::parser::{
+    LineReader, LineResultExt, ParseError, ParseErrorType, Property, PropertyConsumer,
+    PropertyProducer,
+};
 use crate::util;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -82,11 +85,13 @@ impl CalTimeZone {
 
     fn validate(&self) -> Result<(), ParseError> {
         if self.tzid.is_empty() {
-            return Err(ParseError::MissingRequiredProp(String::from("TZID")));
+            return Err(ParseError::from(ParseErrorType::MissingRequiredProp(
+                String::from("TZID"),
+            )));
         }
         if self.observances.is_empty() {
-            return Err(ParseError::MissingRequiredProp(String::from(
-                "STANDARD/DAYLIGHT",
+            return Err(ParseError::from(ParseErrorType::MissingRequiredProp(
+                String::from("STANDARD/DAYLIGHT"),
             )));
         }
         Ok(())
@@ -112,9 +117,16 @@ impl PropertyProducer for CalTimeZone {
     }
 }
 
-fn set_once_prop<T>(slot: &mut Option<T>, name: &str, value: T) -> Result<(), ParseError> {
+fn set_once_prop<T>(
+    slot: &mut Option<T>,
+    name: &str,
+    value: T,
+    line: usize,
+) -> Result<(), ParseError> {
     if slot.is_some() {
-        return Err(ParseError::DuplicateProp(name.to_string()));
+        return Err(
+            ParseError::from(ParseErrorType::DuplicateProp(name.to_string())).with_line(line),
+        );
     }
     *slot = Some(value);
     Ok(())
@@ -128,10 +140,12 @@ impl PropertyConsumer for CalTimeZone {
         let mut tz = CalTimeZone::new("".into());
         loop {
             let Some(line) = lines.next() else {
-                break Err(ParseError::UnexpectedEOF);
+                break Err(
+                    ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num())
+                );
             };
 
-            let prop = line.parse::<Property>()?;
+            let prop = Property::from_str_at(&line, lines.line_num())?;
             match prop.name().as_str() {
                 "END" if prop.value() == "VTIMEZONE" => {
                     tz.validate()?;
@@ -139,15 +153,25 @@ impl PropertyConsumer for CalTimeZone {
                 }
                 "TZID" => {
                     if !tz.tzid.is_empty() {
-                        return Err(ParseError::DuplicateProp("TZID".to_string()));
+                        return Err(ParseError::from(ParseErrorType::DuplicateProp(
+                            "TZID".to_string(),
+                        ))
+                        .with_line(lines.line_num()));
                     }
                     tz.tzid = prop.take_value();
                 }
                 "LAST-MODIFIED" => {
-                    let value = prop.try_into()?;
-                    set_once_prop(&mut tz.last_modified, "LAST-MODIFIED", value)?;
+                    let value = prop.try_into().with_line(lines)?;
+                    set_once_prop(
+                        &mut tz.last_modified,
+                        "LAST-MODIFIED",
+                        value,
+                        lines.line_num(),
+                    )?;
                 }
-                "TZURL" => set_once_prop(&mut tz.tzurl, "TZURL", prop.take_value())?,
+                "TZURL" => {
+                    set_once_prop(&mut tz.tzurl, "TZURL", prop.take_value(), lines.line_num())?
+                }
                 "BEGIN" if prop.value() == "STANDARD" => {
                     tz.observances
                         .push(CalTimeZoneObservance::from_lines(lines, prop)?);
@@ -156,7 +180,12 @@ impl PropertyConsumer for CalTimeZone {
                     tz.observances
                         .push(CalTimeZoneObservance::from_lines(lines, prop)?);
                 }
-                "BEGIN" => return Err(ParseError::UnexpectedBegin(prop.take_value())),
+                "BEGIN" => {
+                    return Err(ParseError::from(ParseErrorType::UnexpectedBegin(
+                        prop.take_value(),
+                    ))
+                    .with_line(lines.line_num()));
+                }
                 _ => {
                     tz.props.push(prop);
                 }
@@ -251,31 +280,35 @@ impl CalTimeZoneObservance {
         self.rdate.push(CalDateTime::Floating(rdate));
     }
 
-    fn validate_dtstart(prop: Property) -> Result<CalDateTime, ParseError> {
+    fn validate_dtstart(prop: Property, line: usize) -> Result<CalDateTime, ParseError> {
         let prop_name = prop.name().clone();
-        let date: CalDate = prop.try_into()?;
+        let date: CalDate = prop.try_into().map_err(|e: ParseError| e.with_line(line))?;
         match date {
             CalDate::DateTime(CalDateTime::Floating(dt)) => Ok(CalDateTime::Floating(dt)),
-            _ => Err(ParseError::InvalidDate(format!(
+            _ => Err(ParseError::from(ParseErrorType::InvalidDate(format!(
                 "{} must be a local DATE-TIME without TZID or Z",
                 prop_name
-            ))),
+            )))
+            .with_line(line)),
         }
     }
 
-    fn validate_rdate(prop: Property) -> Result<Vec<CalDateTime>, ParseError> {
+    fn validate_rdate(prop: Property, line: usize) -> Result<Vec<CalDateTime>, ParseError> {
         let mut dates = Vec::new();
         for date in prop.value().split(',') {
             let date_prop = Property::new(prop.name(), prop.params().to_vec(), date);
-            let parsed: CalDate = date_prop.try_into()?;
+            let parsed: CalDate = date_prop
+                .try_into()
+                .map_err(|e: ParseError| e.with_line(line))?;
             match parsed {
                 CalDate::DateTime(CalDateTime::Floating(dt)) => {
                     dates.push(CalDateTime::Floating(dt));
                 }
                 _ => {
-                    return Err(ParseError::InvalidDate(String::from(
+                    return Err(ParseError::from(ParseErrorType::InvalidDate(String::from(
                         "RDATE in VTIMEZONE must be local DATE-TIME",
-                    )));
+                    )))
+                    .with_line(line));
                 }
             }
         }
@@ -327,7 +360,12 @@ impl PropertyConsumer for CalTimeZoneObservance {
         let kind = match prop.value().as_str() {
             "STANDARD" => CalTimeZoneObservanceKind::Standard,
             "DAYLIGHT" => CalTimeZoneObservanceKind::Daylight,
-            _ => return Err(ParseError::UnexpectedBegin(prop.take_value())),
+            _ => {
+                return Err(
+                    ParseError::from(ParseErrorType::UnexpectedBegin(prop.take_value()))
+                        .with_line(lines.line_num()),
+                );
+            }
         };
 
         let mut dtstart = None;
@@ -340,52 +378,68 @@ impl PropertyConsumer for CalTimeZoneObservance {
 
         loop {
             let Some(line) = lines.next() else {
-                break Err(ParseError::UnexpectedEOF);
+                break Err(
+                    ParseError::from(ParseErrorType::UnexpectedEOF).with_line(lines.line_num())
+                );
             };
 
-            let prop = line.parse::<Property>()?;
+            let prop = Property::from_str_at(&line, lines.line_num())?;
             match prop.name().as_str() {
                 "END" if prop.value() == kind.as_str() => {
-                    let dtstart = dtstart
-                        .ok_or_else(|| ParseError::MissingRequiredProp(String::from("DTSTART")))?;
+                    let dtstart = dtstart.ok_or_else(|| {
+                        ParseError::from(ParseErrorType::MissingRequiredProp(String::from(
+                            "DTSTART",
+                        )))
+                        .with_line(lines.line_num())
+                    })?;
                     let tzoffset_from = tzoffset_from.ok_or_else(|| {
-                        ParseError::MissingRequiredProp(String::from("TZOFFSETFROM"))
+                        ParseError::from(ParseErrorType::MissingRequiredProp(String::from(
+                            "TZOFFSETFROM",
+                        )))
+                        .with_line(lines.line_num())
                     })?;
                     let tzoffset_to = tzoffset_to.ok_or_else(|| {
-                        ParseError::MissingRequiredProp(String::from("TZOFFSETTO"))
+                        ParseError::from(ParseErrorType::MissingRequiredProp(String::from(
+                            "TZOFFSETTO",
+                        )))
+                        .with_line(lines.line_num())
                     })?;
-                    let observance = Self {
-                        kind,
-                        dtstart,
-                        tzoffset_from,
-                        tzoffset_to,
-                        tzname,
-                        rrule,
-                        rdate,
-                        props,
-                    };
-                    observance.validate()?;
-                    break Ok(observance);
+                    let mut obs = Self::new(kind, dtstart, tzoffset_from, tzoffset_to);
+                    obs.tzname = tzname;
+                    obs.rrule = rrule;
+                    obs.rdate = rdate;
+                    obs.props = props;
+                    obs.validate()?;
+                    break Ok(obs);
                 }
                 "DTSTART" => {
-                    let value = Self::validate_dtstart(prop)?;
-                    set_once_prop(&mut dtstart, "DTSTART", value)?;
+                    let dt = Self::validate_dtstart(prop, lines.line_num())?;
+                    let CalDateTime::Floating(value) = dt else {
+                        unreachable!("validate_dtstart guarantees floating")
+                    };
+                    set_once_prop(&mut dtstart, "DTSTART", value, lines.line_num())?;
                 }
                 "TZOFFSETFROM" => {
-                    let value = prop.value().parse()?;
-                    set_once_prop(&mut tzoffset_from, "TZOFFSETFROM", value)?;
+                    let value = prop.value().parse().with_line(lines)?;
+                    set_once_prop(&mut tzoffset_from, "TZOFFSETFROM", value, lines.line_num())?;
                 }
                 "TZOFFSETTO" => {
-                    let value = prop.value().parse()?;
-                    set_once_prop(&mut tzoffset_to, "TZOFFSETTO", value)?;
+                    let value = prop.value().parse().with_line(lines)?;
+                    set_once_prop(&mut tzoffset_to, "TZOFFSETTO", value, lines.line_num())?;
                 }
                 "TZNAME" => tzname.push(prop.take_value()),
                 "RRULE" => {
-                    let value = prop.value().parse()?;
-                    set_once_prop(&mut rrule, "RRULE", value)?;
+                    let value = prop.value().parse().with_line(lines)?;
+                    set_once_prop(&mut rrule, "RRULE", value, lines.line_num())?;
                 }
-                "RDATE" => rdate.extend(Self::validate_rdate(prop)?),
-                "BEGIN" => return Err(ParseError::UnexpectedBegin(prop.take_value())),
+                "RDATE" => rdate.extend(Self::validate_rdate(prop, lines.line_num())?),
+                "BEGIN" => {
+                    return Err(ParseError::from(ParseErrorType::UnexpectedBegin(
+                        prop.take_value(),
+                    ))
+                    .with_line(lines.line_num()));
+                }
+
                 _ => props.push(prop),
             }
         }
@@ -404,13 +458,19 @@ impl CalUtcOffset {
         let mins = (abs / 60) % 60;
         let hours = abs / 3600;
         if mins >= 60 || secs >= 60 {
-            return Err(ParseError::InvalidUtcOffset(seconds.to_string()));
+            return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                seconds.to_string(),
+            )));
         }
         if seconds < 0 && abs == 0 {
-            return Err(ParseError::InvalidUtcOffset(String::from("-0000")));
+            return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                String::from("-0000"),
+            )));
         }
         if hours > 23 {
-            return Err(ParseError::InvalidUtcOffset(seconds.to_string()));
+            return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                seconds.to_string(),
+            )));
         }
         Ok(Self { seconds })
     }
@@ -444,37 +504,47 @@ impl FromStr for CalUtcOffset {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() != 5 && s.len() != 7 {
-            return Err(ParseError::InvalidUtcOffset(s.to_string()));
+            return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                s.to_string(),
+            )));
         }
         let sign = match &s[0..1] {
             "+" => 1,
             "-" => -1,
-            _ => return Err(ParseError::InvalidUtcOffset(s.to_string())),
+            _ => {
+                return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                    s.to_string(),
+                )));
+            }
         };
         if s == "-0000" || s == "-000000" {
-            return Err(ParseError::InvalidUtcOffset(s.to_string()));
+            return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                s.to_string(),
+            )));
         }
 
         let hours = s[1..3]
             .parse::<i32>()
-            .map_err(|_| ParseError::InvalidUtcOffset(s.to_string()))?;
+            .map_err(|_| ParseError::from(ParseErrorType::InvalidUtcOffset(s.to_string())))?;
         let minutes = s[3..5]
             .parse::<i32>()
-            .map_err(|_| ParseError::InvalidUtcOffset(s.to_string()))?;
+            .map_err(|_| ParseError::from(ParseErrorType::InvalidUtcOffset(s.to_string())))?;
         let seconds = if s.len() == 7 {
             s[5..7]
                 .parse::<i32>()
-                .map_err(|_| ParseError::InvalidUtcOffset(s.to_string()))?
+                .map_err(|_| ParseError::from(ParseErrorType::InvalidUtcOffset(s.to_string())))?
         } else {
             0
         };
 
         if minutes >= 60 || seconds >= 60 {
-            return Err(ParseError::InvalidUtcOffset(s.to_string()));
+            return Err(ParseError::from(ParseErrorType::InvalidUtcOffset(
+                s.to_string(),
+            )));
         }
 
         Self::from_seconds(sign * (hours * 3600 + minutes * 60 + seconds))
-            .map_err(|_| ParseError::InvalidUtcOffset(s.to_string()))
+            .map_err(|_| ParseError::from(ParseErrorType::InvalidUtcOffset(s.to_string())))
     }
 }
 
@@ -667,7 +737,7 @@ mod tests {
         CalDate, CalDateTime, CalTimeZone, CalTimeZoneObservance, CalTimeZoneObservanceKind,
         CalUtcOffset, Calendar,
     };
-    use crate::parser::{LineReader, ParseError, Property, PropertyConsumer};
+    use crate::parser::{LineReader, ParseError, ParseErrorType, Property, PropertyConsumer};
 
     fn minimal_observance(kind: &str, dtstart: &str, from: &str, to: &str) -> String {
         format!(
@@ -677,7 +747,12 @@ mod tests {
 
     fn parse_timezone(input: &str) -> Result<CalTimeZone, ParseError> {
         let mut reader = LineReader::new(Cursor::new(input.as_bytes()));
-        CalTimeZone::from_lines(&mut reader, Property::new("BEGIN", vec![], "VTIMEZONE"))
+        CalTimeZone::from_lines(&mut reader, Property::new("BEGIN", vec![], "VTIMEZONE")).and_then(
+            |res| {
+                res.validate()?;
+                Ok(res)
+            },
+        )
     }
 
     #[test]
@@ -839,7 +914,9 @@ END:VCALENDAR\n";
         let err = parse_timezone(input).unwrap_err();
         assert_eq!(
             err,
-            ParseError::MissingRequiredProp("STANDARD/DAYLIGHT".to_string())
+            ParseError::from(ParseErrorType::MissingRequiredProp(
+                "STANDARD/DAYLIGHT".to_string()
+            ))
         );
     }
 
@@ -851,7 +928,10 @@ END:VCALENDAR\n";
         );
 
         let err = parse_timezone(&input).unwrap_err();
-        assert_eq!(err, ParseError::MissingRequiredProp("TZID".to_string()));
+        assert_eq!(
+            err,
+            ParseError::from(ParseErrorType::MissingRequiredProp("TZID".to_string()))
+        );
     }
 
     #[test]
@@ -866,7 +946,10 @@ END:VTIMEZONE\n";
         let err = parse_timezone(input).unwrap_err();
         assert_eq!(
             err,
-            ParseError::MissingRequiredProp("TZOFFSETFROM".to_string())
+            ParseError::new(
+                5,
+                ParseErrorType::MissingRequiredProp("TZOFFSETFROM".to_string())
+            )
         );
     }
 
@@ -883,8 +966,11 @@ END:VTIMEZONE\n";
         let err = parse_timezone(input).unwrap_err();
         assert_eq!(
             err,
-            ParseError::InvalidDate(
-                "DTSTART must be a local DATE-TIME without TZID or Z".to_string()
+            ParseError::new(
+                3,
+                ParseErrorType::InvalidDate(
+                    "DTSTART must be a local DATE-TIME without TZID or Z".to_string()
+                )
             )
         );
     }
@@ -903,7 +989,12 @@ END:VTIMEZONE\n";
         let err = parse_timezone(input).unwrap_err();
         assert_eq!(
             err,
-            ParseError::InvalidDate("RDATE in VTIMEZONE must be local DATE-TIME".to_string())
+            ParseError::new(
+                6,
+                ParseErrorType::InvalidDate(
+                    "RDATE in VTIMEZONE must be local DATE-TIME".to_string()
+                )
+            )
         );
     }
 
@@ -915,7 +1006,10 @@ END:VTIMEZONE\n";
         );
 
         let err = parse_timezone(&input).unwrap_err();
-        assert_eq!(err, ParseError::DuplicateProp("TZID".to_string()));
+        assert_eq!(
+            err,
+            ParseError::new(2, ParseErrorType::DuplicateProp("TZID".to_string()))
+        );
     }
 
     #[test]
@@ -937,15 +1031,15 @@ END:VTIMEZONE\n";
     fn utc_offset_rejects_invalid_values() {
         assert_eq!(
             "-0000".parse::<CalUtcOffset>().unwrap_err(),
-            ParseError::InvalidUtcOffset("-0000".to_string())
+            ParseError::from(ParseErrorType::InvalidUtcOffset("-0000".to_string()))
         );
         assert_eq!(
             "+126060".parse::<CalUtcOffset>().unwrap_err(),
-            ParseError::InvalidUtcOffset("+126060".to_string())
+            ParseError::from(ParseErrorType::InvalidUtcOffset("+126060".to_string()))
         );
         assert_eq!(
             "+2400".parse::<CalUtcOffset>().unwrap_err(),
-            ParseError::InvalidUtcOffset("+2400".to_string())
+            ParseError::from(ParseErrorType::InvalidUtcOffset("+2400".to_string()))
         );
     }
 

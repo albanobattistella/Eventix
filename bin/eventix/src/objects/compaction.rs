@@ -6,7 +6,7 @@ use eventix_ical::objects::{
     CalCompType, CalComponent, CalDate, CalOrganizer, CalTodoStatus, DateContext, EventLike,
     PRIORITY_MEDIUM, UpdatableEventLike,
 };
-use eventix_ical::parser::ParseError;
+use eventix_ical::parser::{ParseError, ParseErrorType};
 use eventix_locale::Locale;
 use eventix_state::{CalendarAlarmType, PersonalAlarms};
 use std::sync::Arc;
@@ -20,8 +20,8 @@ use crate::pages::Page;
 
 /// Maps a DST-related [`ParseError`] to the appropriate localized error message.
 fn dst_error_msg<'a>(locale: &'a (dyn Locale + Send + Sync), err: &ParseError) -> &'a str {
-    match err {
-        ParseError::AmbiguousTime(_) => locale.translate("error.dst_ambiguous"),
+    match err.ty() {
+        &ParseErrorType::AmbiguousTime(_) => locale.translate("error.dst_ambiguous"),
         _ => locale.translate("error.dst_nonexistent"),
     }
 }

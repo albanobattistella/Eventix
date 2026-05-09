@@ -12,7 +12,7 @@ use crate::objects::{
     CalDate, CalDateTime, CalDateType, CalRRule, CalRRuleSide, CalTimeZone, CalWDayDesc, Calendar,
     ResolvedDateTime,
 };
-use crate::parser::ParseError;
+use crate::parser::{ParseError, ParseErrorType};
 use crate::util;
 
 /// Resolves calendar dates and datetimes using embedded `VTIMEZONE` data when available.
@@ -120,13 +120,16 @@ impl CalendarTimeZoneResolver {
             CalDateTime::Timezone(local, tzid) => {
                 match self.resolve_local(tzid, *local) {
                     MappedLocalTime::None => {
-                        return Err(ParseError::NonExistentTime(format!(
+                        return Err(ParseError::from(ParseErrorType::NonExistentTime(format!(
                             "{} in {}",
                             local, tzid
-                        )));
+                        ))));
                     }
                     MappedLocalTime::Ambiguous(_, _) => {
-                        return Err(ParseError::AmbiguousTime(format!("{} in {}", local, tzid)));
+                        return Err(ParseError::from(ParseErrorType::AmbiguousTime(format!(
+                            "{} in {}",
+                            local, tzid
+                        ))));
                     }
                     MappedLocalTime::Single(_) => {}
                 }
@@ -224,10 +227,13 @@ impl CalendarTimeZoneResolver {
 
 fn validate_system_time(tz: &Tz, local: NaiveDateTime) -> Result<(), ParseError> {
     match tz.from_local_datetime(&local) {
-        MappedLocalTime::None => Err(ParseError::NonExistentTime(format!("{} in {}", local, tz))),
-        MappedLocalTime::Ambiguous(_, _) => {
-            Err(ParseError::AmbiguousTime(format!("{} in {}", local, tz)))
-        }
+        MappedLocalTime::None => Err(ParseError::from(ParseErrorType::NonExistentTime(format!(
+            "{} in {}",
+            local, tz
+        )))),
+        MappedLocalTime::Ambiguous(_, _) => Err(ParseError::from(ParseErrorType::AmbiguousTime(
+            format!("{} in {}", local, tz),
+        ))),
         MappedLocalTime::Single(_) => Ok(()),
     }
 }

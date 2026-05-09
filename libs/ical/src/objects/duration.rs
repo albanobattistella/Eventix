@@ -8,7 +8,8 @@ use formatx::formatx;
 
 use chrono::Duration;
 
-use crate::{objects::CalLocale, parser::ParseError};
+use crate::objects::CalLocale;
+use crate::parser::{ParseError, ParseErrorType};
 
 /// A duration for calendar objects.
 ///
@@ -137,12 +138,14 @@ impl Display for HumanDuration<'_> {
 
 fn parse_num<'a>(org: &'_ str, d: &'a str) -> Result<(&'a str, i64, char), ParseError> {
     let Some(digits) = d.chars().position(|c| !c.is_ascii_digit()) else {
-        return Err(ParseError::InvalidDuration(org.to_string()));
+        return Err(ParseError::from(ParseErrorType::InvalidDuration(
+            org.to_string(),
+        )));
     };
 
     let num = d[0..digits]
         .parse::<u64>()
-        .map_err(ParseError::InvalidNumber)?;
+        .map_err(|e| ParseError::from(ParseErrorType::InvalidNumber(e)))?;
     Ok((&d[digits + 1..], num as i64, d.chars().nth(digits).unwrap()))
 }
 
@@ -159,12 +162,16 @@ impl FromStr for CalDuration {
             (d, false)
         };
         if !d.starts_with('P') {
-            return Err(ParseError::InvalidDuration(org.to_string()));
+            return Err(ParseError::from(ParseErrorType::InvalidDuration(
+                org.to_string(),
+            )));
         }
 
         let finish = |d: &str, org: &str, mut duration: Duration| {
             if !d.is_empty() {
-                return Err(ParseError::InvalidDuration(org.to_string()));
+                return Err(ParseError::from(ParseErrorType::InvalidDuration(
+                    org.to_string(),
+                )));
             }
             if neg {
                 duration = -duration;
@@ -185,7 +192,11 @@ impl FromStr for CalDuration {
                     duration += Duration::weeks(num);
                     return finish(d, org, duration);
                 }
-                _ => return Err(ParseError::InvalidDuration(org.to_string())),
+                _ => {
+                    return Err(ParseError::from(ParseErrorType::InvalidDuration(
+                        org.to_string(),
+                    )));
+                }
             }
             d
         } else {
@@ -203,7 +214,11 @@ impl FromStr for CalDuration {
                     duration += Duration::seconds(num);
                     return finish(d, org, duration);
                 }
-                _ => return Err(ParseError::InvalidDuration(org.to_string())),
+                _ => {
+                    return Err(ParseError::from(ParseErrorType::InvalidDuration(
+                        org.to_string(),
+                    )));
+                }
             }
 
             if !d.is_empty() {
@@ -214,14 +229,22 @@ impl FromStr for CalDuration {
                         duration += Duration::seconds(num);
                         return finish(d, org, duration);
                     }
-                    _ => return Err(ParseError::InvalidDuration(org.to_string())),
+                    _ => {
+                        return Err(ParseError::from(ParseErrorType::InvalidDuration(
+                            org.to_string(),
+                        )));
+                    }
                 }
 
                 if !d.is_empty() {
                     let (d, num, t) = parse_num(org, d)?;
                     match t {
                         'S' => duration += Duration::seconds(num),
-                        _ => return Err(ParseError::InvalidDuration(org.to_string())),
+                        _ => {
+                            return Err(ParseError::from(ParseErrorType::InvalidDuration(
+                                org.to_string(),
+                            )));
+                        }
                     }
                     d
                 } else {
@@ -244,7 +267,7 @@ mod tests {
 
     use super::CalDuration;
     use crate::objects::CalLocaleEn;
-    use crate::parser::ParseError;
+    use crate::parser::{ParseError, ParseErrorType};
 
     #[test]
     fn display_formats_complete_positive_negative_and_zero_durations() {
@@ -294,25 +317,33 @@ mod tests {
     fn parse_rejects_invalid_designators_in_all_positions() {
         assert_eq!(
             "P1X".parse::<CalDuration>(),
-            Err(ParseError::InvalidDuration("P1X".to_string()))
+            Err(ParseError::from(ParseErrorType::InvalidDuration(
+                "P1X".to_string()
+            )))
         );
         assert_eq!(
             "PT1D".parse::<CalDuration>(),
-            Err(ParseError::InvalidDuration("PT1D".to_string()))
+            Err(ParseError::from(ParseErrorType::InvalidDuration(
+                "PT1D".to_string()
+            )))
         );
         assert_eq!(
             "PT1H2H".parse::<CalDuration>(),
-            Err(ParseError::InvalidDuration("PT1H2H".to_string()))
+            Err(ParseError::from(ParseErrorType::InvalidDuration(
+                "PT1H2H".to_string()
+            )))
         );
         assert_eq!(
             "PT1H2M3M".parse::<CalDuration>(),
-            Err(ParseError::InvalidDuration("PT1H2M3M".to_string()))
+            Err(ParseError::from(ParseErrorType::InvalidDuration(
+                "PT1H2M3M".to_string()
+            )))
         );
     }
 
     #[test]
     fn parse_reports_invalid_number_overflow() {
         let err = "P18446744073709551616D".parse::<CalDuration>().unwrap_err();
-        assert!(matches!(err, ParseError::InvalidNumber(_)));
+        assert!(matches!(err.ty(), ParseErrorType::InvalidNumber(_)));
     }
 }
