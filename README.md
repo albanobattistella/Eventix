@@ -116,8 +116,8 @@ do not need a tray icon, you can just remove DBus session access and Eventix wil
 a tray icon.
 
 Eventix currently uses the X11 windowing system, because at least with KDE and fractional scaling,
-the rendering quality is suboptimal at the moment. If you do not have this issue, feel free to
-switch to Wayland in the flatpak settings.
+the rendering quality on Wayland is suboptimal at the moment. If you do not have this issue, feel
+free to switch to Wayland in the flatpak settings.
 
 ## License
 
