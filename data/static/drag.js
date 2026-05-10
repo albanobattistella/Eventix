@@ -174,6 +174,9 @@ class ResizeOperation {
         this._endTotalMin = 0;
         this._startMouseX = 0;
         this._startMouseY = 0;
+        this._initialTop = "";
+        this._initialHeight = "";
+        this._initialInnerHeight = "";
         this._didResize = false;
         this._boundMove = this._move.bind(this);
         this._boundStop = this._stop.bind(this);
@@ -189,6 +192,10 @@ class ResizeOperation {
         this._el = el;
         this._startMouseX = e.clientX;
         this._startMouseY = e.clientY;
+        this._initialTop = el.style.top;
+        this._initialHeight = el.style.height;
+        const inner = el.querySelector("div[style*='height: calc']");
+        this._initialInnerHeight = inner ? inner.style.height : "";
         this._didResize = false;
 
         // The column container is the `position: relative; height: 1440px` div that is the
@@ -260,6 +267,17 @@ class ResizeOperation {
         }
     }
 
+    _rewind(el) {
+        if (el) {
+            el.style.top = this._initialTop;
+            el.style.height = this._initialHeight;
+            const inner = el.querySelector("div[style*='height: calc']");
+            if (inner) {
+                inner.style.height = this._initialInnerHeight;
+            }
+        }
+    }
+
     _stop(e) {
         $(document).off("mousemove", this._boundMove);
         $(document).off("mouseup", this._boundStop);
@@ -278,12 +296,18 @@ class ResizeOperation {
             const newStart = Math.min(snapped, this._boxBottom - 30);
             const hour = Math.floor(newStart / 60);
             const minute = newStart % 60;
-            resizeEvent(this.uid, this.rid, hour, minute, null, null, reloadContent);
+            const el = this._el;
+            resizeEvent(this.uid, this.rid, hour, minute, null, null, reloadContent, () =>
+                this._rewind(el),
+            );
         } else {
             const newEnd = Math.max(snapped, this._boxTop + 30);
             const hour = Math.floor(newEnd / 60);
             const minute = newEnd % 60;
-            resizeEvent(this.uid, this.rid, null, null, hour, minute, reloadContent);
+            const el = this._el;
+            resizeEvent(this.uid, this.rid, null, null, hour, minute, reloadContent, () =>
+                this._rewind(el),
+            );
         }
 
         this._edge = null;
