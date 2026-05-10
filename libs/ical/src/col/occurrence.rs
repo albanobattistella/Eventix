@@ -345,6 +345,9 @@ impl<'c> Occurrence<'c> {
     pub fn occurrence_range_in_tz(&self, local: &Tz) -> Option<EventTzRange> {
         fn foreign_tz_name(date: Option<&CalDate>, local: &Tz) -> Option<String> {
             match date? {
+                CalDate::DateTime(CalDateTime::Utc(_)) if local.name() != "UTC" => {
+                    Some("UTC".to_string())
+                }
                 CalDate::DateTime(CalDateTime::Timezone(_, tzid)) => match tzid.parse::<Tz>() {
                     Ok(tz) if &tz != local => Some(tzid.clone()),
                     Err(_) => Some(tzid.clone()),
@@ -1514,8 +1517,12 @@ mod tests {
         let start: ResolvedDateTime = utc_dt.with_timezone(&berlin).fixed_offset().into();
         let occ = Occurrence::new(dir(), &comp, Some(start), None, false);
 
-        // UTC is stored as CalDateTime::Utc, not Timezone, so returns None
-        assert!(occ.occurrence_range_in_tz(&berlin).is_none());
+        let result = occ.occurrence_range_in_tz(&berlin);
+        assert!(result.is_some());
+        let range = result.unwrap();
+        assert_eq!(range.tz_name(), "UTC");
+        assert!(range.start().is_some());
+        assert!(range.end().is_none());
     }
 
     #[test]
