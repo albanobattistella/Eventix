@@ -801,6 +801,7 @@ impl CalComponent {
                 until_override,
             );
             let tzid = self.start().and_then(|date| match date {
+                CalDate::DateTime(CalDateTime::Utc(_)) => Some(String::from("UTC")),
                 CalDate::DateTime(CalDateTime::Timezone(_, tzid)) => Some(tzid.clone()),
                 _ => None,
             });
@@ -1283,6 +1284,34 @@ mod tests {
         assert_eq!(
             no_dates.dates_between(start, end, empty_resolver).next(),
             None
+        );
+    }
+
+    #[test]
+    fn dates_between_keeps_utc_recurrences_fixed_across_viewer_dst() {
+        let calendar: Calendar = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:utc-recur\nDTSTAMP:20250101T000000Z\nDTSTART:20250329T090000Z\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR"
+            .parse()
+            .unwrap();
+        let resolver = calendar.timezone_resolver();
+        let start = chrono_tz::Europe::Berlin
+            .with_ymd_and_hms(2025, 3, 28, 0, 0, 0)
+            .unwrap();
+        let end = chrono_tz::Europe::Berlin
+            .with_ymd_and_hms(2025, 4, 2, 0, 0, 0)
+            .unwrap();
+
+        let dates = calendar.components()[0]
+            .dates_between(start, end, resolver)
+            .map(|(_, date, excluded)| (date.with_timezone(&UTC), excluded))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            dates,
+            vec![
+                (UTC.with_ymd_and_hms(2025, 3, 29, 9, 0, 0).unwrap(), false,),
+                (UTC.with_ymd_and_hms(2025, 3, 30, 9, 0, 0).unwrap(), false,),
+                (UTC.with_ymd_and_hms(2025, 3, 31, 9, 0, 0).unwrap(), false,),
+            ]
         );
     }
 
