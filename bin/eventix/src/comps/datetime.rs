@@ -56,10 +56,17 @@ impl DateTime {
 
     pub fn to_caldate(&self, timezone: &str, ty: CalDateType, end: bool) -> Option<CalDate> {
         match &self.time {
-            Some(time) => Some(CalDate::DateTime(CalDateTime::Timezone(
-                self.date.date()?.and_time(time.value()),
-                timezone.to_string(),
-            ))),
+            Some(time) => {
+                let dt = self.date.date()?.and_time(time.value());
+                if timezone == "UTC" {
+                    Some(CalDate::DateTime(CalDateTime::Utc(dt.and_utc())))
+                } else {
+                    Some(CalDate::DateTime(CalDateTime::Timezone(
+                        dt,
+                        timezone.to_string(),
+                    )))
+                }
+            }
             None => Some(self.date.to_caldate(ty, end)?),
         }
     }

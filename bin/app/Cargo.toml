@@ -7,6 +7,8 @@ build = "../build.rs"
 [dependencies]
 clap.workspace = true
 eventix-cmd.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 xdg.workspace = true
 

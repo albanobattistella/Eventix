@@ -188,6 +188,8 @@ They are not part of the Cargo build graph.
 
 Agents should not modify tooling unless explicitly requested.
 
+Please use `rg` (rip-grep) instead of `grep` for searching to respect .gitignore.
+
 ## SAFE WORKFLOW FOR AGENTS
 
 Before committing changes:

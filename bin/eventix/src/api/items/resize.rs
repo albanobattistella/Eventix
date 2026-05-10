@@ -9,9 +9,11 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
-use chrono::{Days, NaiveDateTime, NaiveTime};
+use chrono::{Days, NaiveDateTime, NaiveTime, TimeZone};
 use eventix_ical::col::Occurrence;
-use eventix_ical::objects::{CalComponent, CalDate, CalDateTime, EventLike, UpdatableEventLike};
+use eventix_ical::objects::{
+    CalComponent, CalDate, DateContext, EventLike, ResolvedDateTime, UpdatableEventLike,
+};
 use eventix_locale::Locale;
 use eventix_state::EventixState;
 use serde::{Deserialize, Serialize};
@@ -65,6 +67,7 @@ fn half_hour_to_time(hour: u32, minute: u32) -> anyhow::Result<(NaiveTime, bool)
 fn get_timespan(
     c: &Occurrence<'_>,
     locale: &Arc<dyn Locale + Send + Sync>,
+    ctx: &DateContext,
     req: &Request,
     user_mail: Option<String>,
     resize_start: bool,
@@ -81,18 +84,16 @@ fn get_timespan(
     let old_end = c
         .occurrence_end()
         .ok_or_else(|| anyhow!("Event has no end time"))?;
-    let tzid = c.tz_name().unwrap_or_else(|| tz.name().to_string());
+    let start_dt = old_start.naive_local();
+    let end_dt = old_end.naive_local();
 
-    if resize_start {
+    let (start_dt, end_dt) = if resize_start {
         let (new_time, _) = half_hour_to_time(req.start_hour.unwrap(), req.start_minute.unwrap())?;
-        let new_start = NaiveDateTime::new(old_start.date_naive(), new_time);
-        if new_start >= old_end.naive_local() {
+        let new_start = NaiveDateTime::new(start_dt.date(), new_time);
+        if new_start >= end_dt {
             return Err(anyhow!("New start must be before existing end"));
         }
-        Ok((
-            CalDate::DateTime(CalDateTime::Timezone(new_start, tzid.clone())),
-            CalDate::DateTime(CalDateTime::Timezone(old_end.naive_local(), tzid)),
-        ))
+        (new_start, end_dt)
     } else {
         let (new_time, next_day) =
             half_hour_to_time(req.end_hour.unwrap(), req.end_minute.unwrap())?;
@@ -100,15 +101,14 @@ fn get_timespan(
         // 00:00:00 on day X+1 is treated as end-of-day on X (matching occurrence_ends_on),
         // so we subtract one day in that case before applying the new time.
         let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
-        let logical_end_date =
-            if old_end.time() == midnight && old_end.date_naive() > old_start.date_naive() {
-                old_end
-                    .date_naive()
-                    .checked_sub_days(Days::new(1))
-                    .ok_or_else(|| anyhow!("End date underflow"))?
-            } else {
-                old_end.date_naive()
-            };
+        let logical_end_date = if end_dt.time() == midnight && end_dt.date() > start_dt.date() {
+            end_dt
+                .date()
+                .checked_sub_days(Days::new(1))
+                .ok_or_else(|| anyhow!("End date underflow"))?
+        } else {
+            end_dt.date()
+        };
         let end_date = if next_day {
             logical_end_date
                 .checked_add_days(Days::new(1))
@@ -117,14 +117,28 @@ fn get_timespan(
             logical_end_date
         };
         let new_end = NaiveDateTime::new(end_date, new_time);
-        if new_end <= old_start.naive_local() {
+        if new_end <= start_dt {
             return Err(anyhow!("New end must be after existing start"));
         }
-        Ok((
-            CalDate::DateTime(CalDateTime::Timezone(old_start.naive_local(), tzid.clone())),
-            CalDate::DateTime(CalDateTime::Timezone(new_end, tzid)),
-        ))
-    }
+        (start_dt, new_end)
+    };
+
+    let convert_tz = |dt| -> anyhow::Result<CalDate> {
+        let fixed = ResolvedDateTime::new(
+            tz.from_local_datetime(dt)
+                .single()
+                .ok_or_else(|| anyhow!("Non-existent or ambiguous local time: {} in {}", dt, tz))?
+                .fixed_offset(),
+        );
+        c.start()
+            .unwrap()
+            .from_resolved_in_tz(fixed, tz, ctx.resolver())
+            .map_err(|e| anyhow!("No such date in calendar timezone: {e:?}"))
+    };
+
+    let new_start = convert_tz(&start_dt)?;
+    let new_end = convert_tz(&end_dt)?;
+    Ok((new_start, new_end))
 }
 
 pub async fn handler(
@@ -180,7 +194,7 @@ async fn run_resize(
     let occ = file
         .occurrence_by_id(&req.uid, req.rid.as_ref(), locale.timezone())
         .ok_or_else(|| anyhow!("Occurrence for {} at {:?} not found", req.uid, req.rid))?;
-    let (start, end) = get_timespan(&occ, &locale, &req, user_mail, resize_start)?;
+    let (start, end) = get_timespan(&occ, &locale, &ctx, &req, user_mail, resize_start)?;
 
     if let Some(comp) =
         file.component_with_mut(|c| c.uid() == &req.uid && c.rid() == req.rid.as_ref())

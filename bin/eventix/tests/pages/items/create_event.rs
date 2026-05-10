@@ -1184,7 +1184,59 @@ async fn timed_event_start_in_dst_gap() {
     assert_no_ics(&cal_dir);
 }
 
-/// End datetime falls in the Europe/Berlin autumn fold (2026-10-25 02:30 is ambiguous).
+/// A timed event using UTC timezone. Verifies that DTSTART and DTEND are stored as UTC (Z suffix).
+#[tokio::test]
+async fn timed_event_utc() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let state = make_state(&cal_dir);
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_event_fields(),
+        &[
+            ("calendar", CAL_ID),
+            ("summary", "UTC Event"),
+            ("start_end[from][date]", "2026-04-15"),
+            ("start_end[from][time]", "09:00"),
+            ("start_end[to][date]", "2026-04-15"),
+            ("start_end[to][time]", "10:00"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to_enabled]", "true"),
+            ("start_end[timezone]", "UTC"),
+        ],
+    );
+    let body = encode_form(&fields);
+
+    let (status, resp_body) = post(router, "/pages/items/add?ctype=Event", &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_created_ics(&cal_dir);
+    let comp = first_component(&ics);
+    assert_eq!(comp.summary(), Some(&"UTC Event".to_string()));
+
+    // Verify start and end are UTC datetimes.
+    match comp.start().unwrap() {
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            assert_eq!(
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                "2026-04-15T09:00:00Z"
+            );
+        }
+        other => panic!("expected UTC DTSTART, got {:?}", other),
+    }
+    match comp.end_or_due().unwrap() {
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            assert_eq!(
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                "2026-04-15T10:00:00Z"
+            );
+        }
+        other => panic!("expected UTC DTEND, got {:?}", other),
+    }
+}
 /// The handler must reject the event with an error.
 #[tokio::test]
 async fn timed_event_end_in_dst_fold() {

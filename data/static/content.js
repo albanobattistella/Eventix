@@ -42,7 +42,11 @@ function reloadContent() {
         return;
     }
     fireEvent(new DeselectEvent());
-    fetchContent(slug, "#page-content", query, null);
+    if (slug === "weekly") {
+        fetchContent(slug, "#page-content", query, _weeklyOnLoaded);
+    } else {
+        fetchContent(slug, "#page-content", query, null);
+    }
 }
 
 function resetPage() {

@@ -129,7 +129,7 @@ impl<'a> DayOccurrence<'a> {
         day_occs.sort_by_key(|i| {
             (
                 !(i.is_all_day() || i.is_all_day_on(date)),
-                i.end_or_due().cloned(),
+                i.occurrence_end(),
                 i.directory().clone(),
                 i.summary().cloned(),
             )

@@ -27,7 +27,7 @@ fn action_update(
     locale: &Arc<dyn Locale + Send + Sync>,
     state: &mut eventix_state::State,
     form: &mut CompEdit,
-    req: &Request,
+    req: &mut Request,
 ) -> anyhow::Result<(bool, Option<String>)> {
     let (calendar, alarm_type, organizer) = {
         let file = state
@@ -255,18 +255,25 @@ fn action_update(
             let tz: Tz = event_tz
                 .parse()
                 .map_err(|_| anyhow!("Invalid timezone: {}", event_tz))?;
-            file.create_overwrite(&req.uid, rid.unwrap(), &tz, |_, c| {
-                form.update(
-                    &new_cal,
-                    &alarm_type,
-                    c,
-                    personal_alarms,
-                    organizer,
-                    &ctx,
-                    locale,
-                )
-            })
-            .context("Creating overwrite failed")?;
+            let rid = rid.unwrap();
+
+            let normalized_rid = file
+                .create_overwrite(&req.uid, rid, &tz, |_, c| {
+                    form.update(
+                        &new_cal,
+                        &alarm_type,
+                        c,
+                        personal_alarms,
+                        organizer,
+                        &ctx,
+                        locale,
+                    )
+                })
+                .context("Creating overwrite failed")?;
+
+            if req.mode == EditMode::Occurrence {
+                req.rid = Some(normalized_rid.to_string());
+            }
         }
 
         file.calendar_mut().populate_timezones();
@@ -304,7 +311,7 @@ pub async fn handler(
 
     let form = {
         let mut state = state.lock().await;
-        match action_update(&mut page, &locale, &mut state, &mut form, &req) {
+        match action_update(&mut page, &locale, &mut state, &mut form, &mut req) {
             Ok((true, Some(uid))) => {
                 // present the user an edit form for the created series
                 req.uid = uid;

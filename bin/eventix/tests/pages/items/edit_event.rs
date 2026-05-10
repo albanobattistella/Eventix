@@ -11,8 +11,8 @@ use tempfile::TempDir;
 
 use helper::edit::{assert_success, mtime_nanos, read_ics_by_uid};
 use helper::{
-    CAL_ID, CAL2_ID, assert_error, assert_no_ics, encode_form, first_component, make_router,
-    make_state, make_state_two_cals, merge_fields, post,
+    CAL_ID, CAL2_ID, assert_error, assert_no_ics, encode_form, first_component, get, make_router,
+    make_state, make_state_in_tz, make_state_two_cals, merge_fields, post,
 };
 
 // --- Helpers specific to edit-event tests ---
@@ -353,6 +353,192 @@ async fn occurrence_edit_overrides_single() {
     assert!(override_block.contains("DTSTART;TZID=Europe/Berlin:20260415T090000"));
     assert!(override_block.contains("DTEND;TZID=Europe/Berlin:20260415T110000"));
     assert!(override_block.contains("SUMMARY:Special standup"));
+}
+
+/// Saving a not-yet-overwritten occurrence immediately re-renders the form from the created
+/// overwrite instead of the generated base occurrence.
+#[tokio::test]
+async fn occurrence_edit_new_overwrite_rerenders_updated_values() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-occ-rerender";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        format!(
+            "BEGIN:VCALENDAR\r\n\
+             BEGIN:VEVENT\r\n\
+             UID:{uid}\r\n\
+             DTSTAMP:20260101T000000Z\r\n\
+             DTSTART:20260421T160000Z\r\n\
+             DTEND:20260421T173000Z\r\n\
+             RRULE:FREQ=WEEKLY;BYDAY=TU,TH\r\n\
+             SUMMARY:UTC practice\r\n\
+             END:VEVENT\r\n\
+             END:VCALENDAR\r\n"
+        ),
+    )
+    .unwrap();
+    let edit_start = mtime_nanos(&ics_path).to_string();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_edit_fields(&edit_start),
+        &[
+            ("summary", "Changed immediately"),
+            ("start_end[from][date]", "2026-04-23"),
+            ("start_end[from][time]", "16:00"),
+            ("start_end[to][date]", "2026-04-23"),
+            ("start_end[to][time]", "19:00"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to_enabled]", "true"),
+            ("start_end[timezone]", "UTC"),
+        ],
+    );
+    let body = encode_form(&fields);
+    let uri = format!(
+        "/pages/items/edit?mode=Occurrence&uid={uid}&rid=TTEurope%2FBerlin%3B2026-04-23T18%3A00%3A00&prev=%2F"
+    );
+
+    let (status, resp_body) = post(router, &uri, &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+    assert!(
+        resp_body.contains("name=\"summary\"")
+            && resp_body.contains("value=\"Changed immediately\""),
+        "expected updated summary in immediate edit response, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[to][time]\"") && resp_body.contains("value=\"19:00\""),
+        "expected updated end time in immediate edit response, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[timezone]\"")
+            && resp_body.contains("id=\"start_end_timezone_\"")
+            && resp_body.contains("value=\"UTC\""),
+        "expected UTC timezone in immediate edit response, got:\n{resp_body}"
+    );
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let overwrite = ics
+        .components()
+        .iter()
+        .find(|c| c.rid().is_some())
+        .expect("expected overwrite after occurrence edit");
+    assert_eq!(
+        overwrite.summary(),
+        Some(&"Changed immediately".to_string())
+    );
+}
+
+/// Opening the edit form for a non-overwritten UTC occurrence keeps the UTC wall clock time in the
+/// form instead of pre-filling the local display time.
+#[tokio::test]
+async fn occurrence_edit_form_prefills_utc_non_overwrite_in_utc() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-occ-utc-base";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         PRODID:-//Fake ICS generator//EN\r\n\
+         VERSION:2.0\r\n\
+         CALSCALE:GREGORIAN\r\n\
+         METHOD:PUBLISH\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-occ-utc-base\r\n\
+         DTSTAMP:20260401T170000Z\r\n\
+         DTSTART:20260421T160000Z\r\n\
+         DTEND:20260421T173000Z\r\n\
+         SUMMARY:Kids Soccer Practice\r\n\
+         RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20260610T235959Z\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!(
+        "/pages/items/edit/content?mode=Occurrence&uid={uid}&rid=TTEurope%2FBerlin%3B2026-05-28T18%3A00%3A00&prev=%2F"
+    );
+
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert!(
+        resp_body.contains("name=\"start_end[from][time]\"")
+            && resp_body.contains("value=\"16:00\""),
+        "expected UTC DTSTART in form for non-overwritten occurrence, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[timezone]\"")
+            && resp_body.contains("id=\"start_end_timezone_\"")
+            && resp_body.contains("value=\"UTC\""),
+        "expected UTC timezone selected in form, got:\n{resp_body}"
+    );
+}
+
+/// Opening the edit form for a non-overwritten foreign-timezone occurrence keeps the event
+/// timezone wall clock time instead of retagging the local display time with the source TZID.
+#[tokio::test]
+async fn occurrence_edit_form_prefills_foreign_tz_non_overwrite_in_event_tz() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-occ-foreign-base";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         PRODID:-//Fake ICS generator//EN\r\n\
+         VERSION:2.0\r\n\
+         CALSCALE:GREGORIAN\r\n\
+         METHOD:PUBLISH\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-occ-foreign-base\r\n\
+         DTSTAMP:20260401T170000Z\r\n\
+         DTSTART;TZID=America/New_York:20260528T090000\r\n\
+         DTEND;TZID=America/New_York:20260528T103000\r\n\
+         SUMMARY:School dropoff\r\n\
+         RRULE:FREQ=WEEKLY;BYDAY=TH;UNTIL=20260630T235959Z\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!(
+        "/pages/items/edit/content?mode=Occurrence&uid={uid}&rid=TTEurope%2FBerlin%3B2026-05-28T15%3A00%3A00&prev=%2F"
+    );
+
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert!(
+        resp_body.contains("name=\"start_end[from][time]\"")
+            && resp_body.contains("value=\"09:00\""),
+        "expected event timezone DTSTART in form for non-overwritten occurrence, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[to][time]\"") && resp_body.contains("value=\"10:30\""),
+        "expected event timezone DTEND in form for non-overwritten occurrence, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[timezone]\"")
+            && resp_body.contains("id=\"start_end_timezone_\"")
+            && resp_body.contains("value=\"America/New_York\""),
+        "expected America/New_York timezone selected in form, got:\n{resp_body}"
+    );
 }
 
 // --- Following edit ---

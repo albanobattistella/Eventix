@@ -734,6 +734,8 @@ dependencies = [
  "gdk-pixbuf",
  "gtk4",
  "ksni",
+ "serde",
+ "serde_json",
  "tokio",
  "webkit6",
  "xdg",

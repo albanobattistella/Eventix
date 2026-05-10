@@ -642,8 +642,9 @@ impl PropertyConsumer for Unknown {
 #[cfg(test)]
 mod tests {
     use std::io::BufWriter;
+    use std::str::FromStr;
 
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, TimeZone};
 
     use chrono_tz::Tz;
 
@@ -1799,5 +1800,44 @@ END:VCALENDAR\n";
         cal.validate_times(&Tz::America__New_York);
 
         assert!(cal.components().is_empty());
+    }
+
+    #[test]
+    fn test_recurrence_utc_resolution() {
+        // DTSTART:20260415T090000Z
+        // RRULE:FREQ=WEEKLY
+        // This should result in occurrences at 09:00:00 UTC.
+        let ics = "BEGIN:VCALENDAR\n\
+BEGIN:VEVENT\n\
+UID:test-utc-recur\n\
+DTSTAMP:20260415T080000Z\n\
+DTSTART:20260415T090000Z\n\
+RRULE:FREQ=WEEKLY\n\
+SUMMARY:UTC Recurring Event\n\
+END:VEVENT\n\
+END:VCALENDAR\n";
+
+        let calendar = Calendar::from_str(ics).expect("Failed to parse calendar");
+
+        // Use Europe/Berlin (UTC+2 in April 2026)
+        let local_tz = Tz::Europe__Berlin;
+        let start_window = local_tz.with_ymd_and_hms(2026, 4, 1, 0, 0, 0).unwrap();
+        let end_window = local_tz.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap();
+
+        let mut found = false;
+        for component in calendar.components() {
+            let iter =
+                component.dates_between(start_window, end_window, calendar.timezone_resolver());
+            for (_ty, resolved, _excluded) in iter {
+                let utc_dt = resolved.with_timezone(&chrono::Utc);
+                assert_eq!(
+                    utc_dt.format("%H:%M:%S").to_string(),
+                    "09:00:00",
+                    "Occurrence should be at 09:00:00 UTC"
+                );
+                found = true;
+            }
+        }
+        assert!(found, "Should have found at least one occurrence");
     }
 }

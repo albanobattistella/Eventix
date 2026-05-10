@@ -8,3 +8,4 @@ Icon=io.github.hrniels.Eventix
 Terminal=false
 Categories=Office;Calendar;
 StartupNotify=true
+StartupWMClass=io.github.hrniels.Eventix

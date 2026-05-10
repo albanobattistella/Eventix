@@ -90,7 +90,7 @@ impl CompEdit {
                 None
             },
             alarm: AlarmRequest::from_alarms(occ.alarms().unwrap_or_default(), pers_alarms, tz),
-            start_end: DateTimeRange::new_from_occurrence(occ),
+            start_end: DateTimeRange::new_from_occurrence(occ, tz),
             status: if !occ.is_recurrent() || req.rid.is_some() {
                 TodoStatus::new_from_occurrence(occ)
             } else {
