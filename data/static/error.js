@@ -117,6 +117,9 @@ function notifyAJAXError(message, col_id) {
                 return e.col_id !== col_id;
             });
         }
+        if (ajaxErrors.length === 0) {
+            setErrorButtonAlert(false);
+        }
         renderAJAXErrors();
         return;
     }
