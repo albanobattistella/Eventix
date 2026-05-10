@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
+    fs,
     process::Command,
     sync::{Arc, Mutex},
     thread,
@@ -13,6 +14,7 @@ use async_channel::unbounded;
 use clap::Parser;
 use gtk::{glib, prelude::*};
 use ksni::blocking::{Handle, TrayMethods};
+use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use webkit6::{
     NavigationPolicyDecision, PolicyDecisionType, WebView,
@@ -43,6 +45,23 @@ struct Args {
     no_tray: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct WindowState {
+    width: i32,
+    height: i32,
+    maximized: bool,
+}
+
+impl Default for WindowState {
+    fn default() -> Self {
+        Self {
+            width: 1400,
+            height: 900,
+            maximized: false,
+        }
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -67,12 +86,24 @@ fn main() {
             None
         };
 
+        let state_path = xdg
+            .place_config_file("window_state.json")
+            .expect("place state file");
+        let state: WindowState = fs::read_to_string(&state_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
         let window = gtk::ApplicationWindow::builder()
             .application(app)
-            .default_width(1400)
-            .default_height(900)
+            .default_width(state.width)
+            .default_height(state.height)
             .title("Eventix")
             .build();
+
+        if state.maximized {
+            window.maximize();
+        }
 
         let webview = WebView::new();
         let settings = WebViewExt::settings(&webview).expect("webview settings");
@@ -107,6 +138,19 @@ fn main() {
         window.set_child(Some(&webview));
 
         window.present();
+
+        window.connect_close_request(move |window| {
+            let (width, height) = window.default_size();
+            let state = WindowState {
+                width,
+                height,
+                maximized: window.is_maximized(),
+            };
+            if let Ok(s) = serde_json::to_string(&state) {
+                let _ = fs::write(&state_path, s);
+            }
+            glib::Propagation::Proceed
+        });
 
         // handle messages in main GTK thread
         if let Some(tray) = tray {
