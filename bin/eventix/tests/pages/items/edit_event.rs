@@ -486,6 +486,61 @@ async fn occurrence_edit_form_prefills_utc_non_overwrite_in_utc() {
     );
 }
 
+/// Opening the edit form for a non-overwritten foreign-timezone occurrence keeps the event
+/// timezone wall clock time instead of retagging the local display time with the source TZID.
+#[tokio::test]
+async fn occurrence_edit_form_prefills_foreign_tz_non_overwrite_in_event_tz() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-occ-foreign-base";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         PRODID:-//Fake ICS generator//EN\r\n\
+         VERSION:2.0\r\n\
+         CALSCALE:GREGORIAN\r\n\
+         METHOD:PUBLISH\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-occ-foreign-base\r\n\
+         DTSTAMP:20260401T170000Z\r\n\
+         DTSTART;TZID=America/New_York:20260528T090000\r\n\
+         DTEND;TZID=America/New_York:20260528T103000\r\n\
+         SUMMARY:School dropoff\r\n\
+         RRULE:FREQ=WEEKLY;BYDAY=TH;UNTIL=20260630T235959Z\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!(
+        "/pages/items/edit/content?mode=Occurrence&uid={uid}&rid=TTEurope%2FBerlin%3B2026-05-28T15%3A00%3A00&prev=%2F"
+    );
+
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert!(
+        resp_body.contains("name=\"start_end[from][time]\"")
+            && resp_body.contains("value=\"09:00\""),
+        "expected event timezone DTSTART in form for non-overwritten occurrence, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[to][time]\"") && resp_body.contains("value=\"10:30\""),
+        "expected event timezone DTEND in form for non-overwritten occurrence, got:\n{resp_body}"
+    );
+    assert!(
+        resp_body.contains("name=\"start_end[timezone]\"")
+            && resp_body.contains("id=\"start_end_timezone_\"")
+            && resp_body.contains("value=\"America/New_York\""),
+        "expected America/New_York timezone selected in form, got:\n{resp_body}"
+    );
+}
+
 // --- Following edit ---
 
 /// Splitting a recurring series at an occurrence (Following mode). Verifies that:

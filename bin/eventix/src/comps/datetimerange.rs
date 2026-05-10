@@ -4,8 +4,9 @@
 
 use askama::Template;
 use chrono::NaiveDate;
+use chrono_tz::Tz;
 use eventix_ical::col::Occurrence;
-use eventix_ical::objects::{CalCompType, CalDate, CalDateTime, CalDateType, EventLike};
+use eventix_ical::objects::{CalCompType, CalDate, CalDateTime, CalDateType};
 use eventix_locale::Locale;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -36,15 +37,20 @@ impl DateTimeRange {
         }
     }
 
-    pub fn new_from_occurrence(occ: &Occurrence<'_>) -> Self {
-        let from = match (occ.start(), occ.occurrence_startdate()) {
-            (Some(source), Some(instant)) => Some(instant.normalize_to(source)),
-            (_, instant) => instant,
-        };
-        let to = match (occ.end_or_due(), occ.occurrence_enddate()) {
-            (Some(source), Some(instant)) => Some(instant.normalize_to(source)),
-            (_, instant) => instant,
-        };
+    pub fn new_from_occurrence(occ: &Occurrence<'_>, local_tz: &Tz) -> Self {
+        let event_tz_range = occ.occurrence_range_in_tz(local_tz);
+        let from = event_tz_range
+            .as_ref()
+            .and_then(|range| range.start().cloned())
+            .or_else(|| occ.occurrence_startdate());
+        let to = event_tz_range
+            .as_ref()
+            .and_then(|range| range.end().cloned())
+            .or_else(|| occ.occurrence_enddate());
+        let timezone = event_tz_range
+            .as_ref()
+            .map(|range| range.tz_name().to_string())
+            .or_else(|| occ.tz_name());
 
         Self {
             from: DateTime::new(
@@ -71,7 +77,7 @@ impl DateTimeRange {
             ),
             from_enabled: from.as_ref().map(|_| true),
             to_enabled: to.as_ref().map(|_| true),
-            timezone: occ.tz_name(),
+            timezone,
         }
     }
 
