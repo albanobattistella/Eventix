@@ -56,6 +56,18 @@
   </screenshots>
 
   <releases>
+    <release version="1.0.4" date="2026-05-10">
+      <description>
+        <ul>
+          <li>Fixed bug in display of DST gaps/folds.</li>
+          <li>Remember scroll position in weekly view.</li>
+          <li>Handle resize failures more gracefully.</li>
+          <li>Remember window size and maximized state.</li>
+          <li>Fixed bug in next-tasks ordering.</li>
+          <li>Fixed bugs in UTC handling.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.3" date="2026-05-09">
       <description>
         <ul>
