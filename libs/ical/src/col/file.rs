@@ -620,6 +620,8 @@ impl CalFile {
     ///
     /// Expects that the component with given uid exists, but *not* the overwrite.
     ///
+    /// Returns the normalized recurrence-id as stored in the ICS file.
+    ///
     /// Returns `Err(ColError::ComponentNotFound)` if no base component with `uid` exists, and
     /// `Err(ColError::RidExists)` if an overwrite for `rid` is already present. Both errors are
     /// converted via `E::from`. Any error returned by `func` is propagated as-is.
@@ -631,7 +633,7 @@ impl CalFile {
         rid: CalDate,
         tz: &Tz,
         func: F,
-    ) -> Result<(), E>
+    ) -> Result<CalDate, E>
     where
         F: FnOnce(&CalComponent, &mut CalComponent) -> Result<(), E>,
         U: ToString,
@@ -693,10 +695,10 @@ impl CalFile {
 
         func(base, &mut comp)?;
 
-        info!("{}: creating overwrite for {} @ {}", self.dir, uid, rid);
+        info!("{}: creating overwrite for {} @ {}", self.dir, uid, &rid);
 
         self.add_component(comp);
-        Ok(())
+        Ok(rid)
     }
 
     /// Changes the start (and optionally the end or due date) of the base component with the
@@ -2241,7 +2243,7 @@ END:VCALENDAR";
         );
         let mut file = CalFile::new_simple(Calendar::default());
 
-        let result: Result<(), ColError> =
+        let result: Result<CalDate, ColError> =
             file.create_overwrite("no-such-uid", rid, tz, |_, _| Ok(()));
         assert!(matches!(result, Err(ColError::ComponentNotFound(_))));
     }
@@ -2265,7 +2267,8 @@ END:VCALENDAR";
             .unwrap();
 
         // Second overwrite for the same RID: must fail.
-        let result: Result<(), ColError> = file.create_overwrite("dup-ow", rid, tz, |_, _| Ok(()));
+        let result: Result<CalDate, ColError> =
+            file.create_overwrite("dup-ow", rid, tz, |_, _| Ok(()));
         assert!(matches!(result, Err(ColError::RidExists(_))));
     }
 
