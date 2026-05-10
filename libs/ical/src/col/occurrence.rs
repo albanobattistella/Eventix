@@ -360,8 +360,8 @@ impl<'c> Occurrence<'c> {
         let event_tz = foreign_tz_name(self.start(), local)
             .or_else(|| foreign_tz_name(self.end_or_due(), local))?;
 
-        let start = self.start().cloned();
-        let end = self.end_or_due().cloned();
+        let start = self.occurrence_startdate();
+        let end = self.occurrence_enddate();
         Some(EventTzRange {
             start,
             end,
