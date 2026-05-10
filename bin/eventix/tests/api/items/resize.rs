@@ -159,11 +159,75 @@ async fn resize_start_time() {
     let start = comp.start().expect("expected DTSTART");
     // Read the stored wall-clock time directly so the assertion is independent of the locale.
     match start {
-        CalDate::DateTime(CalDateTime::Timezone(dt, _)) => {
-            assert_eq!(dt.hour(), new_h);
-            assert_eq!(dt.minute(), 30);
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            // The user requested (old_start_local.hour - 1):30 in TEST_LOCALE_TZ.
+            let expected_local = old_start_local
+                .date_naive()
+                .and_hms_opt(new_h, 30, 0)
+                .unwrap();
+            let expected_utc = locale_tz
+                .from_local_datetime(&expected_local)
+                .unwrap()
+                .with_timezone(&chrono::Utc);
+            assert_eq!(*dt, expected_utc);
         }
-        other => panic!("expected Timezone DTSTART, got {other:?}"),
+        other => panic!("expected UTC DTSTART, got {other:?}"),
+    }
+}
+
+/// Resizing an event stored in **UTC** sets the new time in the locale timezone, which
+/// previously failed because it would try to use "UTC" as the TZID but with a naive local
+/// time.
+#[tokio::test]
+async fn resize_utc_event_to_timezone() {
+    let start_utc = NaiveDate::from_ymd_opt(2026, 4, 15)
+        .unwrap()
+        .and_hms_opt(14, 0, 0)
+        .unwrap()
+        .and_utc();
+    let end_utc = NaiveDate::from_ymd_opt(2026, 4, 15)
+        .unwrap()
+        .and_hms_opt(15, 0, 0)
+        .unwrap()
+        .and_utc();
+
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "resize-utc";
+    write_timed_event_ics(
+        &cal_dir,
+        uid,
+        "UTC Meeting",
+        &CalDate::DateTime(CalDateTime::Utc(start_utc)),
+        &CalDate::DateTime(CalDateTime::Utc(end_utc)),
+        None,
+    );
+    let state = make_state_in_tz(&cal_dir, TEST_LOCALE_TZ);
+    let router = make_router(state);
+
+    // New end: 17:30.
+    let qs = encode_form(&[("uid", uid), ("end_hour", "17"), ("end_minute", "30")]);
+    let (status, _) = post_query(router, &format!("/api/items/resize?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let comp = ics.components().first().unwrap();
+    let end = comp.as_event().unwrap().end().expect("expected DTEND");
+    match end {
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            let locale_tz: chrono_tz::Tz = TEST_LOCALE_TZ.parse().unwrap();
+            let expected_local = NaiveDate::from_ymd_opt(2026, 4, 15)
+                .unwrap()
+                .and_hms_opt(17, 30, 0)
+                .unwrap();
+            let expected_utc = locale_tz
+                .from_local_datetime(&expected_local)
+                .unwrap()
+                .with_timezone(&chrono::Utc);
+            assert_eq!(*dt, expected_utc);
+        }
+        other => panic!("expected UTC DTEND, got {other:?}"),
     }
 }
 
@@ -207,7 +271,7 @@ async fn resize_uses_embedded_vtimezone_rules() {
     )
     .unwrap();
 
-    let state = make_state_in_tz(&cal_dir, TEST_LOCALE_TZ);
+    let state = make_state_in_tz(&cal_dir, "UTC");
     let router = make_router(state);
 
     let qs = encode_form(&[
@@ -216,7 +280,7 @@ async fn resize_uses_embedded_vtimezone_rules() {
         ("end_hour", "2"),
         ("end_minute", "30"),
     ]);
-    let (status, _) = post_query(router, &format!("/api/items/resize?{qs}")).await;
+    let (status, _body) = post_query(router, &format!("/api/items/resize?{qs}")).await;
     assert_eq!(status, 200);
 
     let ics = read_ics_by_uid(&cal_dir, uid);
@@ -261,7 +325,7 @@ async fn resize_uses_embedded_vtimezone_rules() {
                 *dt,
                 NaiveDate::from_ymd_opt(2025, 3, 30)
                     .unwrap()
-                    .and_hms_opt(2, 30, 0)
+                    .and_hms_opt(3, 30, 0)
                     .unwrap()
             );
         }

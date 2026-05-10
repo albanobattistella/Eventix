@@ -249,6 +249,48 @@ async fn todo_status_in_process() {
     assert_eq!(todo.percent(), Some(60), "expected PERCENT-COMPLETE:60");
 }
 
+/// A todo with a timed due date in UTC. Verifies the 'Z' suffix in the ICS file.
+#[tokio::test]
+async fn todo_with_utc_due() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let state = make_state(&cal_dir);
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_todo_fields(),
+        &[
+            ("calendar", CAL_ID),
+            ("summary", "UTC Task"),
+            ("start_end[to][date]", "2026-05-10"),
+            ("start_end[to][time]", "10:00"),
+            ("start_end[to_enabled]", "true"),
+            ("start_end[timezone]", "UTC"),
+        ],
+    );
+    let body = encode_form(&fields);
+
+    let (status, resp_body) = post(router, "/pages/items/add?ctype=Todo", &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    // Verify the raw ICS content for the Z suffix
+    let mut ics_path = cal_dir.clone();
+    let entry = std::fs::read_dir(&cal_dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    ics_path.push(entry.file_name());
+    let content = std::fs::read_to_string(ics_path).unwrap();
+
+    assert!(
+        content.contains("DUE:20260510T100000Z"),
+        "expected UTC Z suffix in DUE, but got:\n{content}"
+    );
+}
+
 /// A todo with missing summary is rejected.
 #[tokio::test]
 async fn todo_missing_summary() {
