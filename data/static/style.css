@@ -1069,6 +1069,7 @@ span.ev_cal_src_disabled {
     justify-content: center;
     overflow: hidden;
     z-index: 2000;
+    pointer-events: none;
 }
 .ev_dst_gap::after {
     content: "\f128"; /* bi-arrow-down */
