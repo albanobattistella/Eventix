@@ -383,15 +383,15 @@ mod tests {
     fn errors() {
         assert_eq!(
             "BEGIN".parse::<Property>(),
-            Err(ParseError::from(ParseErrorType::MissingNameEnd))
+            Err(ParseError::from(ParseErrorType::MissingNameEnd).with_line(0))
         );
         assert_eq!(
             "BEGIN;TEST".parse::<Property>(),
-            Err(ParseError::from(ParseErrorType::MissingParamEnd))
+            Err(ParseError::from(ParseErrorType::MissingParamEnd).with_line(0))
         );
         assert_eq!(
             "BEGIN;:BLA".parse::<Property>(),
-            Err(ParseError::from(ParseErrorType::MissingParamValue))
+            Err(ParseError::from(ParseErrorType::MissingParamValue).with_line(0))
         );
     }
 

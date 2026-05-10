@@ -29,15 +29,26 @@ pub use self::prop::{Parameter, Property, PropertyConsumer, PropertyProducer};
 
 /// Errors that occur during parsing of iCalendar objects.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
-#[error("Parse error in line {line}: {ty}")]
 pub struct ParseError {
-    pub line: usize,
+    pub line: Option<usize>,
     pub ty: ParseErrorType,
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.line {
+            Some(line) => write!(f, "Parse error in line {}: {}", line, self.ty),
+            _ => write!(f, "{}", self.ty),
+        }
+    }
 }
 
 impl ParseError {
     pub fn new(line: usize, ty: ParseErrorType) -> Self {
-        Self { line, ty }
+        Self {
+            line: Some(line),
+            ty,
+        }
     }
 
     /// Returns the error type.
@@ -46,13 +57,13 @@ impl ParseError {
     }
 
     /// Returns the line number where the error occurred.
-    pub fn line_num(&self) -> usize {
+    pub fn line_num(&self) -> Option<usize> {
         self.line
     }
 
     /// Sets the line number of this error.
     pub fn with_line(mut self, line: usize) -> Self {
-        self.line = line;
+        self.line = Some(line);
         self
     }
 }
@@ -119,7 +130,7 @@ pub enum ParseErrorType {
 impl From<ParseErrorType> for ParseError {
     fn from(error_type: ParseErrorType) -> Self {
         Self {
-            line: 0,
+            line: None,
             ty: error_type,
         }
     }

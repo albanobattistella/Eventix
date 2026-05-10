@@ -1190,7 +1190,7 @@ mod tests {
         let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
         let err = parse_prop_line(&mut comp, "SEQUENCE:-1").unwrap_err();
 
-        assert_eq!(err, ParseError::from(ParseErrorType::InvalidSequence(-1)));
+        assert_eq!(err.ty(), &ParseErrorType::InvalidSequence(-1));
     }
 
     #[test]
@@ -1199,8 +1199,8 @@ mod tests {
 
         let non_alarm_err = parse_prop_line(&mut comp, "BEGIN:VEVENT").unwrap_err();
         assert_eq!(
-            non_alarm_err,
-            ParseError::from(ParseErrorType::UnexpectedBegin(String::from("VEVENT")))
+            non_alarm_err.ty(),
+            &ParseErrorType::UnexpectedBegin(String::from("VEVENT"))
         );
 
         let mut wrong_end_lines = LineReader::new("TRIGGER:not-a-date\nEND:VEVENT\n".as_bytes());
@@ -1229,7 +1229,7 @@ mod tests {
     fn parse_prop_rejects_invalid_priority() {
         let mut comp = EventLikeComponent::new_empty(CalCompType::Event);
         let err = parse_prop_line(&mut comp, "PRIORITY:10").unwrap_err();
-        assert_eq!(err, ParseError::from(ParseErrorType::InvalidPriority(10)));
+        assert_eq!(err.ty(), &ParseErrorType::InvalidPriority(10));
     }
 
     #[test]
