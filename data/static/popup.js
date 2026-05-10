@@ -404,6 +404,8 @@ async function _select(newid) {
 //   - In both cases, ensure the popup never goes above the current scroll top.
 function _correctPosition(id) {
     let el = document.getElementById(id);
+    if (!el) return;
+
     const elRect = _pageBoundingBox(el);
     const popupRect = _pageBoundingBox(document.getElementById("popup"));
     const doc = document.documentElement;
