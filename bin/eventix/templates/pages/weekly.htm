@@ -33,6 +33,9 @@
         // Loads the weekly calendar grid for `dateStr` via AJAX and injects it into
         // #page-content. Also updates the browser history so the URL stays accurate.
         function loadWeeklyContent(dateStr) {
+            // reset scroll position as we really load a different view here
+            window.ev.weekly.scrollTop = null;
+
             loadPageContent(
                 "weekly",
                 "#page-content",
@@ -303,12 +306,23 @@
         window.setNowLine();
         window.ev.weekly.nowInterval = setInterval(window.setNowLine, 60 * 1000);
         const area = document.getElementById("week_scroll_area");
-        if (area) area.scrollTop = 60 * 8;
+        if (area) {
+            if (window.ev.weekly.scrollTop !== null) {
+                area.scrollTop = window.ev.weekly.scrollTop;
+            } else {
+                area.scrollTop = 60 * 8;
+            }
+            $(area).on("scroll", function () {
+                window.ev.weekly.scrollTop = area.scrollTop;
+            });
+        }
     }
 
     // Module state: interval handle for the "now" line ticker, cleared and restarted
     // on each fragment load so there is never more than one active interval.
-    window.ev.weekly = { nowInterval: null };
+    if (typeof window.ev.weekly === "undefined") {
+        window.ev.weekly = { nowInterval: null, scrollTop: null };
+    }
 
     $(function () {
         _weeklyOnLoaded();
