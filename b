@@ -290,7 +290,7 @@ def cmd_flatpak_sources(args):
         log_file = Path(tmp_javadeps) / "maven-log.txt"
         try:
             with open(log_file, "w") as f:
-                subprocess.run([
+                process = subprocess.Popen([
                     "flatpak",
                     "run",
                     *user_flag,
@@ -303,7 +303,14 @@ def cmd_flatpak_sources(args):
                     "export JAVA_HOME=/usr/lib/sdk/openjdk && "
                     "cd contrib/davmail && "
                     "mvn install -Dmaven.repo.local=" + rel_tmp_javadeps,
-                ], check=True, stdout=f)
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = process.communicate()
+                f.write(stdout.decode())
+                sys.stdout.buffer.write(stdout)
+                sys.stderr.buffer.write(stderr)
+                f.write(stderr.decode())
+                if process.returncode != 0:
+                    raise subprocess.CalledProcessError(process.returncode, process.args)
             subprocess.run([
                 str(venv_bin / "python"), "contrib/flatpak-gradle-generator.py",
                 "--destdir", "flatpak/java-deps",
