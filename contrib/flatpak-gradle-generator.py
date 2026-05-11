@@ -21,6 +21,8 @@ async def get_remote_sha256(http_session, url):
     logging.info(f"started sha256({url})")
     sha256 = hashlib.sha256()
     async with http_session.get(url) as response:
+        if response.status != 200:
+            raise Exception(f"Failed to download {url}: {response.status}")
         while True:
             data = await response.content.read(4096)
             if not data:
