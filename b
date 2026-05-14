@@ -17,6 +17,8 @@ APP_ID = "io.github.hrniels.Eventix"
 APP_ID_DEBUG = APP_ID + "-debug"
 
 PY_VENV = Path("run/venv")
+STATE_DIR = Path("flatpak/state")
+REPO_DIR = Path("flatpak/repo")
 
 
 def dev_env():
@@ -403,40 +405,52 @@ def _create_archives(app_id):
     return archives
 
 
-def cmd_flatpak(args):
-    """Builds a Flatpak package for Eventix, including dependencies."""
-    state_dir = Path("flatpak/state")
-    repo_dir = Path("flatpak/repo")
+def _run_flatpak_builder(manifest_path, extra_args):
+    """Run the flatpak builder command with given extra arguments."""
+    subprocess.run([
+        "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
+        "--state-dir=" + str(STATE_DIR),
+        "--repo=" + str(REPO_DIR),
+        "--delete-build-dirs",
+        *extra_args,
+        manifest_path,
+    ], check=True)
 
-    if not args.no_source_gen:
-        cmd_flatpak_sources([])
 
-    # generate archives for flatpak JSON
+def _prepare_flatpak_manifest():
+    """Generate archives and prepare a temporary patched manifest.
+
+    Returns the path to the temporary manifest file. The caller is
+    responsible for deleting it when done.
+    """
     archives = _create_archives(APP_ID)
-
-    # Patch the manifest for local build
     manifest_path = Path("flatpak") / (APP_ID + ".json")
     manifest = _patch_manifest(manifest_path, archives)
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", dir="flatpak", delete=False) as tmp:
-        json.dump(manifest, tmp, indent=4)
-        tmp_manifest_path = tmp.name
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", dir="flatpak", delete=False)
+    json.dump(manifest, tmp, indent=4)
+    tmp.close()
+    return tmp.name
 
+
+def cmd_flatpak_download(args):
+    """Download Flatpak sources without building."""
+    tmp_manifest_path = _prepare_flatpak_manifest()
     try:
-        # build everything (without network access)
-        add_args = ["--disable-cache"] if not args.no_rebuild else []
-        subprocess.run([
-            "flatpak", "run", "--command=flathub-build", "org.flatpak.Builder",
-            "--state-dir=" + str(state_dir),
-            "--repo=" + str(repo_dir),
-            "--delete-build-dirs",
-            *add_args,
-            tmp_manifest_path,
-        ], check=True)
+        _run_flatpak_builder(tmp_manifest_path, ["--download-only"])
+    finally:
+        os.unlink(tmp_manifest_path)
 
-        # create flatpak package
+
+def cmd_flatpak_build(args):
+    """Build the Flatpak package using already-downloaded sources."""
+    tmp_manifest_path = _prepare_flatpak_manifest()
+    try:
+        build_args = ["--disable-cache"] if not args.no_rebuild else []
+        # Use --disable-download to ensure we don't try to download anything
+        _run_flatpak_builder(tmp_manifest_path, build_args + ["--disable-download"])
         subprocess.run([
-            "flatpak", "build-bundle", str(repo_dir), "flatpak/Eventix.flatpak", APP_ID
+            "flatpak", "build-bundle", str(REPO_DIR), "flatpak/Eventix.flatpak", APP_ID
         ], check=True)
     finally:
         os.unlink(tmp_manifest_path)
@@ -447,6 +461,13 @@ def cmd_flatpak(args):
     print()
     print("Flatpak ready. You can install it via:")
     print("$ flatpak install --user flatpak/Eventix.flatpak")
+
+
+def cmd_flatpak(args):
+    """Builds a Flatpak package for Eventix, including dependencies."""
+    cmd_flatpak_sources(None)
+    cmd_flatpak_download(None)
+    cmd_flatpak_build(args)
 
 
 def main():
@@ -508,13 +529,20 @@ def main():
         "flatpak-sources", parents=[parent_parser], help="Generate flatpak sources")
     flatpak_src_parser.set_defaults(func=cmd_flatpak_sources)
 
+    flatpak_dl_parser = subparsers.add_parser(
+        "flatpak-download", parents=[parent_parser], help="Download Flatpak sources")
+    flatpak_dl_parser.set_defaults(func=cmd_flatpak_download)
+
+    flatpak_build_parser = subparsers.add_parser(
+        "flatpak-build", parents=[parent_parser], help="Build Flatpak package")
+    flatpak_build_parser.add_argument(
+        "--no-rebuild", help="Skip build step, just repackage", action="store_true")
+    flatpak_build_parser.set_defaults(func=cmd_flatpak_build)
+
     flatpak_parser = subparsers.add_parser(
         "flatpak", parents=[parent_parser], help="Build flatpak package")
     flatpak_parser.add_argument(
         "--no-rebuild", help="Skip build step, just repackage", action="store_true")
-    flatpak_parser.add_argument(
-        "--no-source-gen", help="Don't generate source files; assume they already exist",
-        action="store_true")
     flatpak_parser.set_defaults(func=cmd_flatpak)
 
     format_parser = subparsers.add_parser(

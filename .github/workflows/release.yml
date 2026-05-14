@@ -63,8 +63,16 @@ jobs:
           restore-keys: |
             flatpak-downloads-
 
+      - name: Download Flatpak sources
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 5
+          retry_wait_seconds: 90
+          command: ./b flatpak-download
+
       - name: Build Flatpak bundle
-        run: ./b flatpak --no-source-gen
+        run: ./b flatpak-build
 
       - name: Create or update GitHub Release
         env:
