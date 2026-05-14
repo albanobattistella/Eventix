@@ -408,7 +408,8 @@ def cmd_flatpak(args):
     state_dir = Path("flatpak/state")
     repo_dir = Path("flatpak/repo")
 
-    cmd_flatpak_sources([])
+    if not args.no_source_gen:
+        cmd_flatpak_sources([])
 
     # generate archives for flatpak JSON
     archives = _create_archives(APP_ID)
@@ -509,8 +510,11 @@ def main():
 
     flatpak_parser = subparsers.add_parser(
         "flatpak", parents=[parent_parser], help="Build flatpak package")
-    flatpak_parser.add_argument("--no-rebuild", help="Skip build step, just repackage",
-                                action="store_true")
+    flatpak_parser.add_argument(
+        "--no-rebuild", help="Skip build step, just repackage", action="store_true")
+    flatpak_parser.add_argument(
+        "--no-source-gen", help="Don't generate source files; assume they already exist",
+        action="store_true")
     flatpak_parser.set_defaults(func=cmd_flatpak)
 
     format_parser = subparsers.add_parser(

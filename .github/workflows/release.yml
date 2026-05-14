@@ -52,8 +52,19 @@ jobs:
           eval $(dbus-launch --sh-syntax)
           echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
 
+      - name: Generate flatpak sources
+        run: ./b flatpak-sources
+
+      - name: Cache flatpak-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: .flatpak-builder/downloads
+          key: flatpak-downloads-${{ hashFiles('flatpak/*-sources.json') }}
+          restore-keys: |
+            flatpak-downloads-
+
       - name: Build Flatpak bundle
-        run: ./b flatpak
+        run: ./b flatpak --no-source-gen
 
       - name: Create or update GitHub Release
         env:
