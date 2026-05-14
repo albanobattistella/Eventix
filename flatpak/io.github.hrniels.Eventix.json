@@ -127,7 +127,7 @@
                 {
                     "type": "git",
                     "url": "https://github.com/hrniels/davmail.git",
-                    "commit": "7d8c513f236e5c1af928fee57f5f55d9769133ce",
+                    "commit": "3a4751992a44e1c36370ddd525fad8c8534e4239",
                     "disable-submodules": true
                 },
                 "java-sources.json"
