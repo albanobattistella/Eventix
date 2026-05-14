@@ -52,9 +52,6 @@ jobs:
           eval $(dbus-launch --sh-syntax)
           echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
 
-      - name: Generate flatpak sources
-        run: ./b flatpak-sources
-
       - name: Cache flatpak-builder downloads
         uses: actions/cache@v4
         with:

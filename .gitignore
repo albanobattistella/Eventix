@@ -3,9 +3,6 @@
 /flatpak/build
 /flatpak/repo
 /flatpak/state
-/flatpak/cargo-sources.json
-/flatpak/python-sources.json
-/flatpak/java-sources.json
 /flatpak/*.flatpak
 /flatpak/*.tar.gz
 __pycache__
