@@ -215,7 +215,7 @@ fn action_update(
         {
             // For EditMode::Series, shift all overwrite RECURRENCE-IDs before applying the rest
             // of the form data. This ensures overwrites remain findable after a time change.
-            if req.mode == EditMode::Series {
+            if req.mode == EditMode::Series && comp.is_recurrent() {
                 let dtype = comp.ctype().into();
                 let (new_start, new_end) = form.start_end.as_caldates(locale, dtype);
                 let tz: Tz = event_tz

@@ -309,6 +309,59 @@ async fn series_edit_todo_location_and_description() {
     );
 }
 
+/// Making a due-only todo recurrent adds DTSTART and RRULE to the saved VTODO.
+#[tokio::test]
+async fn series_edit_todo_add_rrule_with_new_start() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-rrule";
+    let ics_path = write_todo_ics_with_due(&cal_dir, uid, "Pay rent", "20260501");
+    let edit_start = mtime_nanos(&ics_path).to_string();
+
+    let state = make_state(&cal_dir);
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_edit_todo_fields(&edit_start),
+        &[
+            ("summary", "Pay rent"),
+            ("start_end[from][date]", "2026-04-30"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to][date]", "2026-05-01"),
+            ("start_end[to_enabled]", "true"),
+            ("alarm[calendar][durtype]", "BeforeEnd"),
+            ("rrule[freq]", "WEEKLY"),
+            ("rrule[weekly_days]", "TH,"),
+            ("rrule[end]", "Count"),
+            ("rrule[count]", "4"),
+        ],
+    );
+    let body = encode_form(&fields);
+    let uri = format!("/pages/items/edit?mode=Series&uid={uid}&prev=%2F");
+
+    let (status, resp_body) = post(router, &uri, &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let comp = first_component(&ics);
+    let start = match comp.start().expect("expected DTSTART") {
+        CalDate::Date(d, _) => d,
+        other => panic!("expected DTSTART as Date, got {:?}", other),
+    };
+    let due = match comp.end_or_due().expect("expected DUE") {
+        CalDate::Date(d, _) => d,
+        other => panic!("expected DUE as Date, got {:?}", other),
+    };
+    let rrule = comp.rrule().expect("expected RRULE");
+
+    assert_eq!(*start, NaiveDate::from_ymd_opt(2026, 4, 30).unwrap());
+    assert_eq!(*due, NaiveDate::from_ymd_opt(2026, 5, 1).unwrap());
+    assert_eq!(rrule.count(), Some(4));
+}
+
 // --- Error paths ---
 
 /// An edit with edit_start = 0 is rejected due to staleness.
