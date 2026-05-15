@@ -354,3 +354,179 @@ async fn series_edit_todo_missing_summary() {
     assert_eq!(status, 200);
     assert_error(&resp_body);
 }
+
+// --- Edit form start/end prefill tests ---
+
+/// Opening the edit form for a todo in the local timezone (Europe/Berlin) shows the wall clock
+/// time and timezone of the todo.
+#[tokio::test]
+async fn edit_form_prefills_local_tz_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-local-tz";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-local-tz\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART;TZID=Europe/Berlin:20260528T160000\r\n\
+         DUE;TZID=Europe/Berlin:20260528T173000\r\n\
+         SUMMARY:Local todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_checked(&resp_body, "start_endfrom_enabled");
+    assert_field_value(&resp_body, "start_end[from][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[from][time]", "16:00");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][time]", "17:30");
+    assert_timezone(&resp_body, "Europe/Berlin");
+}
+
+/// Opening the edit form for a todo in a foreign (non-local) timezone keeps its original timezone.
+#[tokio::test]
+async fn edit_form_prefills_foreign_tz_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-foreign-tz";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-foreign-tz\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DUE;TZID=America/New_York:20260528T100000\r\n\
+         SUMMARY:Foreign todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][time]", "10:00");
+    assert_timezone(&resp_body, "America/New_York");
+}
+
+/// Opening the edit form for a UTC todo shows the UTC wall clock time.
+#[tokio::test]
+async fn edit_form_prefills_utc_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-utc";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-utc\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DUE:20260528T140000Z\r\n\
+         SUMMARY:UTC todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][time]", "14:00");
+    assert_timezone(&resp_body, "UTC");
+}
+
+/// Opening the edit form for an all-day todo.
+#[tokio::test]
+async fn edit_form_prefills_allday_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-allday";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-allday\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DUE;VALUE=DATE:20260528\r\n\
+         SUMMARY:All-day todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_checked(&resp_body, "start_endall_day");
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+}
+
+/// Opening the edit form for a todo with no dates at all.
+#[tokio::test]
+async fn edit_form_prefills_todo_with_no_dates() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-no-dates";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-no-dates\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         SUMMARY:No dates todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_not_checked(&resp_body, "start_endto_enabled");
+}
