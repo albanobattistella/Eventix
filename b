@@ -470,6 +470,52 @@ def cmd_flatpak(args):
     cmd_flatpak_build(args)
 
 
+def cmd_dist(args):
+    """Installs all required files to the given prefix."""
+    prefix = Path(args.prefix)
+    os.makedirs(prefix, 0o755, exist_ok=True)
+
+    # build in release mode
+    subprocess.run(["cargo", "build", "--release"], check=True)
+
+    # install binaries
+    bins = Path("target") / "release"
+    for bin_name in ["eventix", "eventix-app", "eventix-import", "eventix-keyring"]:
+        subprocess.run(["install", "-Dm755", bins / bin_name, "-t", prefix / "bin"], check=True)
+
+    # install desktop files
+    apps = prefix / "share" / "applications"
+    for suffix in ["", "-Import"]:
+        src = Path("flatpak") / f"{APP_ID}{suffix}.desktop"
+        subprocess.run(["install", "-Dm644", src, "-t", apps], check=True)
+
+    # install icons
+    data = Path("data")
+    icons_dst = prefix / "share" / "icons" / "hicolor"
+    icons_src = data / "icons"
+    subprocess.run(["install", "-Dm644", icons_src / "scalable.svg",
+                    icons_dst / "scalable" / "apps" / f"{APP_ID}.svg"], check=True)
+    for png in ["256x256", "128x128", "64x64", "48x48"]:
+        subprocess.run(["install", "-Dm644", icons_src / f"{png}.png",
+                        icons_dst / png / "apps" / f"{APP_ID}.png"], check=True)
+    subprocess.run(["install", "-Dm644", icons_src / "index.theme", "-t", icons_dst], check=True)
+
+    # install metainfo and license
+    metainfo_src = Path("flatpak") / f"{APP_ID}.metainfo.xml"
+    metainfo_dst = prefix / "share" / "metainfo"
+    subprocess.run(["install", "-Dm644", metainfo_src, "-t", metainfo_dst], check=True)
+    license_dst = prefix / "share" / "licenses" / APP_ID / "eventix"
+    subprocess.run(["install", "-Dm644", "LICENSE", "-t", license_dst], check=True)
+
+    # install data folders
+    dst = prefix / "share" / APP_ID
+    os.makedirs(dst, 0o755, exist_ok=True)
+    for dir_name in ["locale", "static", "icons"]:
+        if (dst / dir_name).exists():
+            shutil.rmtree(dst / dir_name)
+        shutil.copytree(data / dir_name, dst / dir_name)
+
+
 def main():
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument(
@@ -496,64 +542,58 @@ def main():
         help="Run the eventix app with tray icon")
     app_parser.set_defaults(func=cmd_app)
 
-    import_parser = subparsers.add_parser(
-        "import", parents=[parent_parser], help="Import an ICS file")
+    import_parser = subparsers.add_parser("import", help="Import an ICS file")
     import_parser.add_argument("file", help="Path to the ICS file to import")
     import_parser.set_defaults(func=cmd_import)
 
-    davmail_parser = subparsers.add_parser(
-        "davmail", parents=[parent_parser], help="Build davmail")
+    davmail_parser = subparsers.add_parser("davmail", help="Build davmail")
     davmail_parser.set_defaults(func=cmd_davmail)
 
-    vdirsyncer_parser = subparsers.add_parser(
-        "vdirsyncer", parents=[parent_parser], help="Build vdirsyncer")
+    vdirsyncer_parser = subparsers.add_parser("vdirsyncer", help="Build vdirsyncer")
     vdirsyncer_parser.set_defaults(func=cmd_vdirsyncer)
 
-    test_parser = subparsers.add_parser(
-        "test", parents=[parent_parser],
-        help="Run cargo tests with bundled dev tools")
+    test_parser = subparsers.add_parser("test", help="Run cargo tests with bundled dev tools")
     test_parser.add_argument(
         "--nocapture", action="store_true",
         help="Show output from passing tests")
     test_parser.set_defaults(cargo_args=[])
     test_parser.set_defaults(func=cmd_test)
 
-    coverage_parser = subparsers.add_parser(
-        "coverage", parents=[parent_parser], help="Generate code coverage information")
+    coverage_parser = subparsers.add_parser("coverage", help="Generate code coverage information")
     coverage_parser.add_argument(
         "file", nargs="?", help="Show line-by-line coverage for a single file"
     )
     coverage_parser.set_defaults(func=cmd_coverage)
 
-    flatpak_src_parser = subparsers.add_parser(
-        "flatpak-sources", parents=[parent_parser], help="Generate flatpak sources")
+    flatpak_src_parser = subparsers.add_parser("flatpak-sources", help="Generate flatpak sources")
     flatpak_src_parser.set_defaults(func=cmd_flatpak_sources)
 
-    flatpak_dl_parser = subparsers.add_parser(
-        "flatpak-download", parents=[parent_parser], help="Download Flatpak sources")
+    flatpak_dl_parser = subparsers.add_parser("flatpak-download", help="Download flatpak sources")
     flatpak_dl_parser.set_defaults(func=cmd_flatpak_download)
 
-    flatpak_build_parser = subparsers.add_parser(
-        "flatpak-build", parents=[parent_parser], help="Build Flatpak package")
+    flatpak_build_parser = subparsers.add_parser("flatpak-build", help="Build flatpak package")
     flatpak_build_parser.add_argument(
         "--no-rebuild", help="Skip build step, just repackage", action="store_true")
     flatpak_build_parser.set_defaults(func=cmd_flatpak_build)
 
     flatpak_parser = subparsers.add_parser(
-        "flatpak", parents=[parent_parser], help="Build flatpak package")
+        "flatpak", help="Generate/download sources and build flatpak package")
     flatpak_parser.add_argument(
         "--no-rebuild", help="Skip build step, just repackage", action="store_true")
     flatpak_parser.set_defaults(func=cmd_flatpak)
 
     format_parser = subparsers.add_parser(
-        "format", parents=[parent_parser],
-        help="Format JS, CSS, and HTML templates with Prettier")
+        "format", help="Format JS, CSS, and HTML templates with Prettier")
     format_parser.set_defaults(func=cmd_format)
 
     format_check_parser = subparsers.add_parser(
-        "format-check", parents=[parent_parser],
-        help="Check JS, CSS, and HTML template formatting with Prettier")
+        "format-check", help="Check JS, CSS, and HTML template formatting with Prettier")
     format_check_parser.set_defaults(func=cmd_format_check)
+
+    dist_parser = subparsers.add_parser(
+        "dist", help="Installs all required files to the given prefix")
+    dist_parser.add_argument("prefix", help="The prefix where to install to")
+    dist_parser.set_defaults(func=cmd_dist)
 
     args, unknown = parser.parse_known_args()
     if args.command == "test":

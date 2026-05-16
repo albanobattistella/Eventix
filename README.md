@@ -110,11 +110,6 @@ eventix/
 
 ## Notes
 
-Since Eventix runs in a flatpak sandbox, it requires access to the DBus session bus for proper tray
-icon support. This is unfortunate, but there does not seem be to a better way at the moment. If you
-do not need a tray icon, you can just remove DBus session access and Eventix will simply not create
-a tray icon.
-
 Eventix currently uses the X11 windowing system, because at least with KDE and fractional scaling,
 the rendering quality on Wayland is suboptimal at the moment. If you do not have this issue, feel
 free to switch to Wayland in the flatpak settings.
