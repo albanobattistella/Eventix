@@ -72,6 +72,7 @@ jobs:
         run: ./b flatpak-build
 
       - name: Create or update GitHub Release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |-
