@@ -5,7 +5,7 @@
 #[path = "../../helper/mod.rs"]
 mod helper;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeZone};
 use eventix_ical::objects::{CalDate, CalDateTime, CalRelated, CalTrigger, EventLike};
 use tempfile::TempDir;
 
@@ -595,6 +595,21 @@ async fn following_edit_splits_series() {
     assert!(
         orig_rrule.until().is_some(),
         "original series must gain an UNTIL"
+    );
+
+    let berlin = chrono_tz::Europe::Berlin;
+    let orig_occurrences: Vec<_> = original
+        .occurrences_between(
+            berlin.with_ymd_and_hms(2026, 4, 1, 0, 0, 0).unwrap(),
+            berlin.with_ymd_and_hms(2026, 4, 30, 23, 59, 59).unwrap(),
+            |_| true,
+        )
+        .map(|occ| occ.occurrence_start().expect("expected occurrence start"))
+        .collect();
+    assert_eq!(
+        orig_occurrences,
+        vec![berlin.with_ymd_and_hms(2026, 4, 15, 9, 0, 0).unwrap()],
+        "original series must not still yield the split occurrence"
     );
 
     // --- New series ---
