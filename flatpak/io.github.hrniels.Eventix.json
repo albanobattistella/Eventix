@@ -14,7 +14,8 @@
         "--device=dri",
         "--socket=x11",
         "--socket=session-bus",
-        "--talk-name=org.kde.StatusNotifierWatcher"
+        "--talk-name=org.kde.StatusNotifierWatcher",
+        "--env=PATH=/app/jre/bin:/app/bin:/usr/bin"
     ],
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
@@ -78,6 +79,13 @@
             ]
         },
         {
+            "name": "openjdk",
+            "buildsystem": "simple",
+            "build-commands": [
+                "/usr/lib/sdk/openjdk/install.sh"
+            ]
+        },
+        {
             "name": "davmail",
             "buildsystem": "simple",
             "build-options": {
@@ -103,22 +111,6 @@
                     "disable-submodules": true
                 },
                 "java-sources.json"
-            ]
-        },
-        {
-            "name": "java-runtime",
-            "buildsystem": "simple",
-            "build-commands": [
-                "mkdir -p /app/openjdk",
-                "tar xzf OpenJDK17U-jre_x64_linux_hotspot_17.0.9_9.tar.gz -C /app/openjdk --strip-components=1",
-                "ln -s /app/openjdk/bin/java /app/bin/java"
-            ],
-            "sources": [
-                {
-                    "type": "file",
-                    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9+9/OpenJDK17U-jre_x64_linux_hotspot_17.0.9_9.tar.gz",
-                    "sha256": "c37f729200b572884b8f8e157852c739be728d61d9a1da0f920104876d324733"
-                }
             ]
         }
     ]
