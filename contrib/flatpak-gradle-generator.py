@@ -116,6 +116,8 @@ def main():
 
     sources = asyncio.run(parse_urls(urls, urls_arch, args.destdir))
 
+    sources.sort(key=lambda x: x['url'])
+
     with open(args.output, 'w') as fp:
         json.dump(sources, fp, indent=4)
         fp.write('\n')
