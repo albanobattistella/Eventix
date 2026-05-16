@@ -65,7 +65,11 @@ impl DateTimeRange {
                 }),
             ),
             to: DateTime::new(
-                Date::new(to.as_ref().map(|t| t.as_naive_date())),
+                Date::new(to.as_ref().map(|t| match t {
+                    CalDate::Date(d, CalDateType::Exclusive) => d.pred_opt().unwrap(),
+                    CalDate::Date(d, CalDateType::Inclusive) => *d,
+                    _ => t.as_naive_date(),
+                })),
                 to.as_ref().and_then(|t| match t {
                     CalDate::DateTime(CalDateTime::Utc(dt)) => {
                         Some(Time::new(dt.naive_utc().time()))

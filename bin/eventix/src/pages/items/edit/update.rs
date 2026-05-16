@@ -5,10 +5,12 @@
 use anyhow::{Context, anyhow};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
+use chrono::Duration;
 use chrono_tz::Tz;
 use eventix_ical::col::CalFile;
 use eventix_ical::objects::{
-    CalCompType, CalComponent, CalDate, CalEvent, CalTodo, Calendar, EventLike, UpdatableEventLike,
+    CalCompType, CalComponent, CalDate, CalDateTime, CalEvent, CalTodo, Calendar, EventLike,
+    UpdatableEventLike,
 };
 use eventix_locale::Locale;
 use eventix_state::EventixState;
@@ -129,7 +131,14 @@ fn action_update(
                 CalDate::Date(_, _) => {
                     CalDate::Date(rid.as_naive_date().pred_opt().unwrap(), ctype.into())
                 }
-                CalDate::DateTime(_) => rid.to_utc(),
+                CalDate::DateTime(_) => {
+                    let utc = rid.to_utc();
+                    let dt = match utc {
+                        CalDate::DateTime(CalDateTime::Utc(dt)) => dt,
+                        _ => unreachable!(),
+                    };
+                    CalDate::DateTime(CalDateTime::Utc(dt - Duration::seconds(1)))
+                }
             };
             old_rrule.set_until(until);
             base.set_rrule(Some(old_rrule));
@@ -215,7 +224,7 @@ fn action_update(
         {
             // For EditMode::Series, shift all overwrite RECURRENCE-IDs before applying the rest
             // of the form data. This ensures overwrites remain findable after a time change.
-            if req.mode == EditMode::Series {
+            if req.mode == EditMode::Series && comp.is_recurrent() {
                 let dtype = comp.ctype().into();
                 let (new_start, new_end) = form.start_end.as_caldates(locale, dtype);
                 let tz: Tz = event_tz

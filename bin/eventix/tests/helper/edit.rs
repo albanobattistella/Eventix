@@ -63,3 +63,42 @@ pub fn mtime_nanos(path: &Path) -> u128 {
         .unwrap()
         .as_nanos()
 }
+
+/// Asserts that the element with the given `id` in the HTML body is checked.
+pub fn assert_checked(body: &str, id: &str) {
+    let escaped_id = regex::escape(id);
+    let pattern = format!(r#"id="{escaped_id}"[^>]*checked="checked""#);
+    let re = regex::Regex::new(&pattern).unwrap();
+    assert!(
+        re.is_match(body),
+        "expected element with id=\"{id}\" to be checked, but it was not.\nResponse body:\n{body}"
+    );
+}
+
+/// Asserts that the element with the given `id` in the HTML body is NOT checked.
+pub fn assert_not_checked(body: &str, id: &str) {
+    let escaped_id = regex::escape(id);
+    let pattern = format!(r#"id="{escaped_id}"[^>]*checked="checked""#);
+    let re = regex::Regex::new(&pattern).unwrap();
+    assert!(
+        !re.is_match(body),
+        "expected element with id=\"{id}\" NOT to be checked, but it was.\nResponse body:\n{body}"
+    );
+}
+
+/// Asserts that a field with the given `name` has the expected `value`.
+pub fn assert_field_value(body: &str, name: &str, value: &str) {
+    let escaped_name = regex::escape(name);
+    let escaped_value = regex::escape(value);
+    let pattern = format!(r#"name="{escaped_name}"[^>]*value="{escaped_value}""#);
+    let re = regex::Regex::new(&pattern).unwrap();
+    assert!(
+        re.is_match(body),
+        "expected field with name=\"{name}\" to have value=\"{value}\", but it was not found.\nResponse body:\n{body}"
+    );
+}
+
+/// Asserts that the timezone field has the expected value.
+pub fn assert_timezone(body: &str, expected_tz: &str) {
+    assert_field_value(body, "start_end[timezone]", expected_tz);
+}

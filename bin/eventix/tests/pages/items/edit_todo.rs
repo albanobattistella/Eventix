@@ -9,9 +9,13 @@ use chrono::NaiveDate;
 use eventix_ical::objects::{CalDate, CalTodoStatus, EventLike};
 use tempfile::TempDir;
 
-use helper::edit::{assert_success, mtime_nanos, read_ics_by_uid};
+use helper::edit::{
+    assert_checked, assert_field_value, assert_not_checked, assert_success, assert_timezone,
+    mtime_nanos, read_ics_by_uid,
+};
 use helper::{
-    CAL_ID, assert_error, encode_form, first_component, make_router, make_state, merge_fields, post,
+    CAL_ID, assert_error, encode_form, first_component, get, make_router, make_state,
+    make_state_in_tz, merge_fields, post,
 };
 
 // --- Helpers specific to edit-todo tests ---
@@ -305,6 +309,59 @@ async fn series_edit_todo_location_and_description() {
     );
 }
 
+/// Making a due-only todo recurrent adds DTSTART and RRULE to the saved VTODO.
+#[tokio::test]
+async fn series_edit_todo_add_rrule_with_new_start() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-rrule";
+    let ics_path = write_todo_ics_with_due(&cal_dir, uid, "Pay rent", "20260501");
+    let edit_start = mtime_nanos(&ics_path).to_string();
+
+    let state = make_state(&cal_dir);
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_edit_todo_fields(&edit_start),
+        &[
+            ("summary", "Pay rent"),
+            ("start_end[from][date]", "2026-04-30"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to][date]", "2026-05-01"),
+            ("start_end[to_enabled]", "true"),
+            ("alarm[calendar][durtype]", "BeforeEnd"),
+            ("rrule[freq]", "WEEKLY"),
+            ("rrule[weekly_days]", "TH,"),
+            ("rrule[end]", "Count"),
+            ("rrule[count]", "4"),
+        ],
+    );
+    let body = encode_form(&fields);
+    let uri = format!("/pages/items/edit?mode=Series&uid={uid}&prev=%2F");
+
+    let (status, resp_body) = post(router, &uri, &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let comp = first_component(&ics);
+    let start = match comp.start().expect("expected DTSTART") {
+        CalDate::Date(d, _) => d,
+        other => panic!("expected DTSTART as Date, got {:?}", other),
+    };
+    let due = match comp.end_or_due().expect("expected DUE") {
+        CalDate::Date(d, _) => d,
+        other => panic!("expected DUE as Date, got {:?}", other),
+    };
+    let rrule = comp.rrule().expect("expected RRULE");
+
+    assert_eq!(*start, NaiveDate::from_ymd_opt(2026, 4, 30).unwrap());
+    assert_eq!(*due, NaiveDate::from_ymd_opt(2026, 5, 1).unwrap());
+    assert_eq!(rrule.count(), Some(4));
+}
+
 // --- Error paths ---
 
 /// An edit with edit_start = 0 is rejected due to staleness.
@@ -353,4 +410,180 @@ async fn series_edit_todo_missing_summary() {
     let (status, resp_body) = post(router, &uri, &body).await;
     assert_eq!(status, 200);
     assert_error(&resp_body);
+}
+
+// --- Edit form start/end prefill tests ---
+
+/// Opening the edit form for a todo in the local timezone (Europe/Berlin) shows the wall clock
+/// time and timezone of the todo.
+#[tokio::test]
+async fn edit_form_prefills_local_tz_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-local-tz";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-local-tz\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART;TZID=Europe/Berlin:20260528T160000\r\n\
+         DUE;TZID=Europe/Berlin:20260528T173000\r\n\
+         SUMMARY:Local todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_checked(&resp_body, "start_endfrom_enabled");
+    assert_field_value(&resp_body, "start_end[from][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[from][time]", "16:00");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][time]", "17:30");
+    assert_timezone(&resp_body, "Europe/Berlin");
+}
+
+/// Opening the edit form for a todo in a foreign (non-local) timezone keeps its original timezone.
+#[tokio::test]
+async fn edit_form_prefills_foreign_tz_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-foreign-tz";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-foreign-tz\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DUE;TZID=America/New_York:20260528T100000\r\n\
+         SUMMARY:Foreign todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][time]", "10:00");
+    assert_timezone(&resp_body, "America/New_York");
+}
+
+/// Opening the edit form for a UTC todo shows the UTC wall clock time.
+#[tokio::test]
+async fn edit_form_prefills_utc_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-utc";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-utc\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DUE:20260528T140000Z\r\n\
+         SUMMARY:UTC todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][time]", "14:00");
+    assert_timezone(&resp_body, "UTC");
+}
+
+/// Opening the edit form for an all-day todo.
+#[tokio::test]
+async fn edit_form_prefills_allday_todo() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-allday";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-allday\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DUE;VALUE=DATE:20260528\r\n\
+         SUMMARY:All-day todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_checked(&resp_body, "start_endall_day");
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_checked(&resp_body, "start_endto_enabled");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+}
+
+/// Opening the edit form for a todo with no dates at all.
+#[tokio::test]
+async fn edit_form_prefills_todo_with_no_dates() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-no-dates";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VTODO\r\n\
+         UID:edit-todo-no-dates\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         SUMMARY:No dates todo\r\n\
+         END:VTODO\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_not_checked(&resp_body, "start_endfrom_enabled");
+    assert_not_checked(&resp_body, "start_endto_enabled");
 }

@@ -5,11 +5,14 @@
 #[path = "../../helper/mod.rs"]
 mod helper;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeZone};
 use eventix_ical::objects::{CalDate, CalDateTime, CalRelated, CalTrigger, EventLike};
 use tempfile::TempDir;
 
-use helper::edit::{assert_success, mtime_nanos, read_ics_by_uid};
+use helper::edit::{
+    assert_checked, assert_field_value, assert_not_checked, assert_success, assert_timezone,
+    mtime_nanos, read_ics_by_uid,
+};
 use helper::{
     CAL_ID, CAL2_ID, assert_error, assert_no_ics, encode_form, first_component, get, make_router,
     make_state, make_state_in_tz, make_state_two_cals, merge_fields, post,
@@ -407,21 +410,10 @@ async fn occurrence_edit_new_overwrite_rerenders_updated_values() {
     let (status, resp_body) = post(router, &uri, &body).await;
     assert_eq!(status, 200);
     assert_success(&resp_body);
-    assert!(
-        resp_body.contains("name=\"summary\"")
-            && resp_body.contains("value=\"Changed immediately\""),
-        "expected updated summary in immediate edit response, got:\n{resp_body}"
-    );
-    assert!(
-        resp_body.contains("name=\"start_end[to][time]\"") && resp_body.contains("value=\"19:00\""),
-        "expected updated end time in immediate edit response, got:\n{resp_body}"
-    );
-    assert!(
-        resp_body.contains("name=\"start_end[timezone]\"")
-            && resp_body.contains("id=\"start_end_timezone_\"")
-            && resp_body.contains("value=\"UTC\""),
-        "expected UTC timezone in immediate edit response, got:\n{resp_body}"
-    );
+    assert_field_value(&resp_body, "summary", "Changed immediately");
+    assert_field_value(&resp_body, "start_end[to][time]", "19:00");
+    assert_timezone(&resp_body, "UTC");
+    assert_not_checked(&resp_body, "start_endall_day");
 
     let ics = read_ics_by_uid(&cal_dir, uid);
     let overwrite = ics
@@ -473,17 +465,9 @@ async fn occurrence_edit_form_prefills_utc_non_overwrite_in_utc() {
 
     let (status, resp_body) = get(router, &uri).await;
     assert_eq!(status, 200);
-    assert!(
-        resp_body.contains("name=\"start_end[from][time]\"")
-            && resp_body.contains("value=\"16:00\""),
-        "expected UTC DTSTART in form for non-overwritten occurrence, got:\n{resp_body}"
-    );
-    assert!(
-        resp_body.contains("name=\"start_end[timezone]\"")
-            && resp_body.contains("id=\"start_end_timezone_\"")
-            && resp_body.contains("value=\"UTC\""),
-        "expected UTC timezone selected in form, got:\n{resp_body}"
-    );
+    assert_field_value(&resp_body, "start_end[from][time]", "16:00");
+    assert_timezone(&resp_body, "UTC");
+    assert_not_checked(&resp_body, "start_endall_day");
 }
 
 /// Opening the edit form for a non-overwritten foreign-timezone occurrence keeps the event
@@ -524,21 +508,10 @@ async fn occurrence_edit_form_prefills_foreign_tz_non_overwrite_in_event_tz() {
 
     let (status, resp_body) = get(router, &uri).await;
     assert_eq!(status, 200);
-    assert!(
-        resp_body.contains("name=\"start_end[from][time]\"")
-            && resp_body.contains("value=\"09:00\""),
-        "expected event timezone DTSTART in form for non-overwritten occurrence, got:\n{resp_body}"
-    );
-    assert!(
-        resp_body.contains("name=\"start_end[to][time]\"") && resp_body.contains("value=\"10:30\""),
-        "expected event timezone DTEND in form for non-overwritten occurrence, got:\n{resp_body}"
-    );
-    assert!(
-        resp_body.contains("name=\"start_end[timezone]\"")
-            && resp_body.contains("id=\"start_end_timezone_\"")
-            && resp_body.contains("value=\"America/New_York\""),
-        "expected America/New_York timezone selected in form, got:\n{resp_body}"
-    );
+    assert_field_value(&resp_body, "start_end[from][time]", "09:00");
+    assert_field_value(&resp_body, "start_end[to][time]", "10:30");
+    assert_timezone(&resp_body, "America/New_York");
+    assert_not_checked(&resp_body, "start_endall_day");
 }
 
 // --- Following edit ---
@@ -622,6 +595,21 @@ async fn following_edit_splits_series() {
     assert!(
         orig_rrule.until().is_some(),
         "original series must gain an UNTIL"
+    );
+
+    let berlin = chrono_tz::Europe::Berlin;
+    let orig_occurrences: Vec<_> = original
+        .occurrences_between(
+            berlin.with_ymd_and_hms(2026, 4, 1, 0, 0, 0).unwrap(),
+            berlin.with_ymd_and_hms(2026, 4, 30, 23, 59, 59).unwrap(),
+            |_| true,
+        )
+        .map(|occ| occ.occurrence_start().expect("expected occurrence start"))
+        .collect();
+    assert_eq!(
+        orig_occurrences,
+        vec![berlin.with_ymd_and_hms(2026, 4, 15, 9, 0, 0).unwrap()],
+        "original series must not still yield the split occurrence"
     );
 
     // --- New series ---
@@ -1044,4 +1032,184 @@ async fn series_edit_absolute_alarm_missing_datetime() {
     let (status, resp_body) = post(router, &uri, &body).await;
     assert_eq!(status, 200);
     assert_error(&resp_body);
+}
+
+// --- Edit form start/end prefill tests ---
+
+/// Opening the edit form for an event in the local timezone (Europe/Berlin) shows the wall clock
+/// time and timezone of the event.
+#[tokio::test]
+async fn edit_form_prefills_local_tz_event() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-local-tz";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-local-tz\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART;TZID=Europe/Berlin:20260528T160000\r\n\
+         DTEND;TZID=Europe/Berlin:20260528T173000\r\n\
+         SUMMARY:Local meeting\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_field_value(&resp_body, "start_end[from][time]", "16:00");
+    assert_field_value(&resp_body, "start_end[to][time]", "17:30");
+    assert_timezone(&resp_body, "Europe/Berlin");
+    assert_not_checked(&resp_body, "start_endall_day");
+}
+
+/// Opening the edit form for an event in a foreign (non-local) timezone keeps the event's wall
+/// clock time and its original timezone.
+#[tokio::test]
+async fn edit_form_prefills_foreign_tz_event() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-foreign-tz";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-foreign-tz\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART;TZID=America/New_York:20260528T100000\r\n\
+         DTEND;TZID=America/New_York:20260528T113000\r\n\
+         SUMMARY:Foreign meeting\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_field_value(&resp_body, "start_end[from][time]", "10:00");
+    assert_field_value(&resp_body, "start_end[to][time]", "11:30");
+    assert_timezone(&resp_body, "America/New_York");
+    assert_not_checked(&resp_body, "start_endall_day");
+}
+
+/// Opening the edit form for a UTC event shows the UTC wall clock time with timezone set to UTC.
+#[tokio::test]
+async fn edit_form_prefills_utc_event() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-utc";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-utc\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART:20260528T140000Z\r\n\
+         DTEND:20260528T153000Z\r\n\
+         SUMMARY:UTC meeting\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_field_value(&resp_body, "start_end[from][time]", "14:00");
+    assert_field_value(&resp_body, "start_end[to][time]", "15:30");
+    assert_timezone(&resp_body, "UTC");
+    assert_not_checked(&resp_body, "start_endall_day");
+}
+
+/// Opening the edit form for an all-day event shows only dates (no times) and no timezone row.
+#[tokio::test]
+async fn edit_form_prefills_allday_event() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-allday";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-allday\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART;VALUE=DATE:20260528\r\n\
+         DTEND;VALUE=DATE:20260529\r\n\
+         SUMMARY:All-day event\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_field_value(&resp_body, "start_end[from][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-28");
+    assert_checked(&resp_body, "start_endall_day");
+}
+
+/// Opening the edit form for an event ending at exactly 0:00 of the next day.
+#[tokio::test]
+async fn edit_form_prefills_event_ending_at_midnight() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-event-midnight";
+    let ics_path = cal_dir.join(format!("{uid}.ics"));
+    std::fs::write(
+        &ics_path,
+        "BEGIN:VCALENDAR\r\n\
+         BEGIN:VEVENT\r\n\
+         UID:edit-event-midnight\r\n\
+         DTSTAMP:20260101T000000Z\r\n\
+         DTSTART;TZID=Europe/Berlin:20260528T220000\r\n\
+         DTEND;TZID=Europe/Berlin:20260529T000000\r\n\
+         SUMMARY:Midnight event\r\n\
+         END:VEVENT\r\n\
+         END:VCALENDAR\r\n",
+    )
+    .unwrap();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let uri = format!("/pages/items/edit/content?mode=Series&uid={uid}&prev=%2F");
+    let (status, resp_body) = get(router, &uri).await;
+    assert_eq!(status, 200);
+    assert_field_value(&resp_body, "start_end[from][date]", "2026-05-28");
+    assert_field_value(&resp_body, "start_end[from][time]", "22:00");
+    assert_field_value(&resp_body, "start_end[to][date]", "2026-05-29");
+    assert_field_value(&resp_body, "start_end[to][time]", "00:00");
+    assert_timezone(&resp_body, "Europe/Berlin");
+    assert_not_checked(&resp_body, "start_endall_day");
 }
