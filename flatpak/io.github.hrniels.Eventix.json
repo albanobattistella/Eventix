@@ -87,7 +87,6 @@
                 }
             },
             "build-commands": [
-                "export PATH=/usr/lib/sdk/openjdk/bin:$PATH",
                 "mvn --offline install -Dmaven.repo.local=flatpak/java-deps",
                 "ant prepare-dist",
                 "install -Dm755 dist/davmail /app/bin/davmail",
