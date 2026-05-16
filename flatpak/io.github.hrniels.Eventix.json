@@ -22,31 +22,15 @@
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
         "env": {
-            "CARGO_HOME": "/app/cargo-home",
+            "CARGO_HOME": "/run/build/Eventix/cargo",
             "CARGO_NET_OFFLINE": "true"
         }
     },
     "modules": [
         {
-            "name": "cargo-vendor",
-            "sources": [
-                "cargo-sources.json"
-            ],
-            "buildsystem": "simple",
-            "build-commands": [
-                "mkdir -p /app/cargo-vendor",
-                "cp -r cargo/vendor/. /app/cargo-vendor/"
-            ]
-        },
-        {
             "name": "Eventix",
             "buildsystem": "simple",
             "build-commands": [
-                "mkdir -p .cargo",
-                "echo '[source.crates-io]' > .cargo/config.toml",
-                "echo 'replace-with = \"vendored-sources\"' >> .cargo/config.toml",
-                "echo '[source.vendored-sources]' >> .cargo/config.toml",
-                "echo 'directory = \"/app/cargo-vendor\"' >> .cargo/config.toml",
                 "cargo build --release",
                 "mkdir -p /app/build-artifacts",
                 "cp target/release/eventix /app/build-artifacts/",
@@ -75,8 +59,6 @@
                 "cp -r data/static /app/share/io.github.hrniels.Eventix",
                 "cp -r data/icons /app/share/io.github.hrniels.Eventix",
                 "gtk-update-icon-cache /app/share/icons/hicolor",
-                "rm -rf /app/cargo-vendor",
-                "rm -rf /app/cargo-home"
             ],
             "sources": [
                 {
@@ -84,7 +66,8 @@
                     "url": "https://github.com/hrniels/eventix.git",
                     "tag": "v1.0.5",
                     "disable-submodules": true
-                }
+                },
+                "cargo-sources.json"
             ]
         },
         "python-sources.json",
