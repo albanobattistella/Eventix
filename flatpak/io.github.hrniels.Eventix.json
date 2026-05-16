@@ -80,27 +80,7 @@
             "name": "Eventix",
             "buildsystem": "simple",
             "build-commands": [
-                "cargo build --release",
-                "install -Dm755 target/release/eventix -t /app/bin/",
-                "install -Dm755 target/release/eventix-app -t /app/bin/",
-                "install -Dm755 target/release/eventix-import -t /app/bin/",
-                "install -Dm755 target/release/eventix-keyring -t /app/bin/",
-                "install -Dm644 flatpak/io.github.hrniels.Eventix.desktop -t /app/share/applications/",
-                "install -Dm644 flatpak/io.github.hrniels.Eventix-Import.desktop -t /app/share/applications/",
-                "install -Dm644 data/icons/scalable.svg /app/share/icons/hicolor/scalable/apps/io.github.hrniels.Eventix.svg",
-                "install -Dm644 data/icons/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.hrniels.Eventix.png",
-                "install -Dm644 data/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.hrniels.Eventix.png",
-                "install -Dm644 data/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.hrniels.Eventix.png",
-                "install -Dm644 data/icons/48x48.png /app/share/icons/hicolor/48x48/apps/io.github.hrniels.Eventix.png",
-                "install -Dm644 data/icons/index.theme /app/share/icons/hicolor/index.theme",
-                "install -Dm644 flatpak/io.github.hrniels.Eventix.metainfo.xml -t /app/share/metainfo/",
-                "install -Dm644 LICENSE -t /app/share/licenses/io.github.hrniels.Eventix/eventix",
-                "mkdir -p /app/share/io.github.hrniels.Eventix/locale",
-                "mkdir -p /app/share/io.github.hrniels.Eventix/static",
-                "mkdir -p /app/share/io.github.hrniels.Eventix/icons",
-                "cp -r data/locale /app/share/io.github.hrniels.Eventix",
-                "cp -r data/static /app/share/io.github.hrniels.Eventix",
-                "cp -r data/icons /app/share/io.github.hrniels.Eventix"
+                "./b dist /app"
             ],
             "sources": [
                 {

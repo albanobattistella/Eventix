@@ -470,6 +470,52 @@ def cmd_flatpak(args):
     cmd_flatpak_build(args)
 
 
+def cmd_dist(args):
+    """Installs all required files to the given prefix."""
+    prefix = Path(args.prefix)
+    os.makedirs(prefix, 0o755, exist_ok=True)
+
+    # build in release mode
+    subprocess.run(["cargo", "build", "--release"], check=True)
+
+    # install binaries
+    bins = Path("target") / "release"
+    for bin_name in ["eventix", "eventix-app", "eventix-import", "eventix-keyring"]:
+        subprocess.run(["install", "-Dm755", bins / bin_name, "-t", prefix / "bin"], check=True)
+
+    # install desktop files
+    apps = prefix / "share" / "applications"
+    for suffix in ["", "-Import"]:
+        src = Path("flatpak") / f"{APP_ID}{suffix}.desktop"
+        subprocess.run(["install", "-Dm644", src, "-t", apps], check=True)
+
+    # install icons
+    data = Path("data")
+    icons_dst = prefix / "share" / "icons" / "hicolor"
+    icons_src = data / "icons"
+    subprocess.run(["install", "-Dm644", icons_src / "scalable.svg",
+                    icons_dst / "scalable" / "apps" / f"{APP_ID}.svg"], check=True)
+    for png in ["256x256", "128x128", "64x64", "48x48"]:
+        subprocess.run(["install", "-Dm644", icons_src / f"{png}.png",
+                        icons_dst / png / "apps" / f"{APP_ID}.png"], check=True)
+    subprocess.run(["install", "-Dm644", icons_src / "index.theme", "-t", icons_dst], check=True)
+
+    # install metainfo and license
+    metainfo_src = Path("flatpak") / f"{APP_ID}.metainfo.xml"
+    metainfo_dst = prefix / "share" / "metainfo"
+    subprocess.run(["install", "-Dm644", metainfo_src, "-t", metainfo_dst], check=True)
+    license_dst = prefix / "share" / "licenses" / APP_ID / "eventix"
+    subprocess.run(["install", "-Dm644", "LICENSE", "-t", license_dst], check=True)
+
+    # install data folders
+    dst = prefix / "share" / APP_ID
+    os.makedirs(dst, 0o755, exist_ok=True)
+    for dir_name in ["locale", "static", "icons"]:
+        if (dst / dir_name).exists():
+            shutil.rmtree(dst / dir_name)
+        shutil.copytree(data / dir_name, dst / dir_name)
+
+
 def main():
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument(
@@ -554,6 +600,12 @@ def main():
         "format-check", parents=[parent_parser],
         help="Check JS, CSS, and HTML template formatting with Prettier")
     format_check_parser.set_defaults(func=cmd_format_check)
+
+    dist_parser = subparsers.add_parser(
+        "dist", parents=[parent_parser],
+        help="Installs all required files to the given prefix")
+    dist_parser.add_argument("prefix", help="The prefix where to install to")
+    dist_parser.set_defaults(func=cmd_dist)
 
     args, unknown = parser.parse_known_args()
     if args.command == "test":
