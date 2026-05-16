@@ -51,6 +51,10 @@
     };
 
     function addAttendee() {
+        const attendee = $("#{{ id }}-new-attendee").val();
+        if (attendee.trim() == "")
+            return;
+
         const list = $("#{{ id }}-attendees");
         if (list.html().trim() == "-") {
             list.html("");
@@ -61,7 +65,6 @@
             {% endif %}
         }
 
-        const attendee = $("#{{ id }}-new-attendee").val();
         doAddAttendee(list, attendee);
         $("#{{ id }}-new-attendee").val("");
     }
