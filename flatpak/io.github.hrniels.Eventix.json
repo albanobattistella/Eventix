@@ -48,8 +48,7 @@
                 "mkdir -p /app/share/io.github.hrniels.Eventix/icons",
                 "cp -r data/locale /app/share/io.github.hrniels.Eventix",
                 "cp -r data/static /app/share/io.github.hrniels.Eventix",
-                "cp -r data/icons /app/share/io.github.hrniels.Eventix",
-                "gtk-update-icon-cache /app/share/icons/hicolor",
+                "cp -r data/icons /app/share/io.github.hrniels.Eventix"
             ],
             "sources": [
                 {
