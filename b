@@ -530,17 +530,17 @@ def main():
     flatpak_src_parser.set_defaults(func=cmd_flatpak_sources)
 
     flatpak_dl_parser = subparsers.add_parser(
-        "flatpak-download", parents=[parent_parser], help="Download Flatpak sources")
+        "flatpak-download", parents=[parent_parser], help="Download flatpak sources")
     flatpak_dl_parser.set_defaults(func=cmd_flatpak_download)
 
     flatpak_build_parser = subparsers.add_parser(
-        "flatpak-build", parents=[parent_parser], help="Build Flatpak package")
+        "flatpak-build", parents=[parent_parser], help="Build flatpak package")
     flatpak_build_parser.add_argument(
         "--no-rebuild", help="Skip build step, just repackage", action="store_true")
     flatpak_build_parser.set_defaults(func=cmd_flatpak_build)
 
     flatpak_parser = subparsers.add_parser(
-        "flatpak", parents=[parent_parser], help="Build flatpak package")
+        "flatpak", parents=[parent_parser], help="Generate/download sources and build flatpak package")
     flatpak_parser.add_argument(
         "--no-rebuild", help="Skip build step, just repackage", action="store_true")
     flatpak_parser.set_defaults(func=cmd_flatpak)
