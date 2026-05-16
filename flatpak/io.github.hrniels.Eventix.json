@@ -14,10 +14,7 @@
         "--device=dri",
         "--socket=x11",
         "--socket=session-bus",
-        "--filesystem=xdg-run/pipewire-0",
-        "--talk-name=org.kde.StatusNotifierWatcher",
-        "--talk-name=org.freedesktop.Notifications",
-        "--talk-name=org.freedesktop.secrets"
+        "--talk-name=org.kde.StatusNotifierWatcher"
     ],
     "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
