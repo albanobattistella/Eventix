@@ -381,7 +381,7 @@ def _create_archives(app_id):
         "--exclude=./contrib",
         # put everything into a subdirectory
         "--transform=s#^#eventix/#",
-        ".git", "bin", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE",
+        ".git", "bin", "data", "libs", "Cargo.toml", "Cargo.lock", "package.json", "LICENSE", "b",
         "flatpak/" + app_id + "-Import.desktop",
         "flatpak/" + app_id + ".desktop",
         "flatpak/" + app_id + ".metainfo.xml",
