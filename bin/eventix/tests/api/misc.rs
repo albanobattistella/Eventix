@@ -120,9 +120,10 @@ async fn attendees_returns_empty_list_for_no_matches() {
 #[tokio::test]
 async fn setlang_updates_locale_and_persists_misc_state() {
     let source_tmp = TempDir::new().unwrap();
-    let (state, xdg_tmp) = make_state_from_col(make_collection(&source_tmp));
+    let (state, _xdg_tmp) = make_state_from_col(make_collection(&source_tmp));
+    let data_home = state.lock().await.xdg().get_data_home().unwrap();
     std::fs::write(
-        xdg_tmp.path().join("data/locale/German.toml"),
+        data_home.join("locale/German.toml"),
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../data/locale/German.toml"
@@ -146,7 +147,7 @@ async fn setlang_updates_locale_and_persists_misc_state() {
     assert_eq!(locked.misc().locale_type(), LocaleType::German);
     assert_eq!(locked.locale().ty(), LocaleType::German);
 
-    let misc = std::fs::read_to_string(xdg_tmp.path().join("data/misc.toml")).unwrap();
+    let misc = std::fs::read_to_string(data_home.join("misc.toml")).unwrap();
     assert!(misc.contains("locale_type = \"German\""));
 }
 
@@ -166,7 +167,8 @@ async fn setlang_rejects_invalid_locale() {
 #[tokio::test]
 async fn togglecal_toggles_calendar_and_persists_misc_state() {
     let source_tmp = TempDir::new().unwrap();
-    let (state, xdg_tmp) = make_state_from_col(make_collection(&source_tmp));
+    let (state, _xdg_tmp) = make_state_from_col(make_collection(&source_tmp));
+    let data_home = state.lock().await.xdg().get_data_home().unwrap();
 
     let router1 = make_calendars_api_router(state.clone());
     let (status1, body1) = post_query(router1, &format!("/api/togglecal?id={CAL_ID}")).await;
@@ -177,8 +179,7 @@ async fn togglecal_toggles_calendar_and_persists_misc_state() {
         let locked = state.lock().await;
         assert!(locked.misc().calendar_disabled(&CAL_ID.to_string()));
     }
-    let misc_after_disable =
-        std::fs::read_to_string(xdg_tmp.path().join("data/misc.toml")).unwrap();
+    let misc_after_disable = std::fs::read_to_string(data_home.join("misc.toml")).unwrap();
     assert!(misc_after_disable.contains(&format!("disabled_calendars = [\"{CAL_ID}\"]")));
 
     let router2 = make_calendars_api_router(state.clone());
@@ -190,14 +191,15 @@ async fn togglecal_toggles_calendar_and_persists_misc_state() {
         let locked = state.lock().await;
         assert!(!locked.misc().calendar_disabled(&CAL_ID.to_string()));
     }
-    let misc_after_enable = std::fs::read_to_string(xdg_tmp.path().join("data/misc.toml")).unwrap();
+    let misc_after_enable = std::fs::read_to_string(data_home.join("misc.toml")).unwrap();
     assert!(!misc_after_enable.contains(CAL_ID));
 }
 
 #[tokio::test]
 async fn togglecal_continues_after_request_cancellation() {
     let source_tmp = TempDir::new().unwrap();
-    let (state, xdg_tmp) = make_state_from_col(make_collection(&source_tmp));
+    let (state, _xdg_tmp) = make_state_from_col(make_collection(&source_tmp));
+    let data_home = state.lock().await.xdg().get_data_home().unwrap();
 
     let state_guard = state.lock().await;
     let router = make_calendars_api_router(state.clone());
@@ -220,7 +222,7 @@ async fn togglecal_continues_after_request_cancellation() {
             .misc()
             .calendar_disabled(&CAL_ID.to_string())
         {
-            let misc = std::fs::read_to_string(xdg_tmp.path().join("data/misc.toml")).unwrap();
+            let misc = std::fs::read_to_string(data_home.join("misc.toml")).unwrap();
             assert!(misc.contains(&format!("disabled_calendars = [\"{CAL_ID}\"]")));
             return;
         }
