@@ -13,7 +13,7 @@ mod sync;
 pub mod util;
 
 /// The current version of the persisted state files.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 use anyhow::{Context, anyhow};
 use chrono::NaiveDateTime;
