@@ -19,7 +19,7 @@ use xdg::BaseDirectories;
 use crate::State;
 use crate::settings::SyncTimeSpan;
 use crate::sync::vdirsyncer::VDirSyncer;
-use crate::sync::{SyncColResult, Syncer, SyncerAuth, log_line};
+use crate::sync::{SyncColResult, Syncer, log_line};
 
 const PORT_BASE: u16 = 25000;
 
@@ -182,7 +182,7 @@ impl O365 {
         col_id: String,
         folder_id: HashMap<String, String>,
         read_only: bool,
-        auth: SyncerAuth,
+        username: String,
         auth_url: Option<&String>,
         token: Option<String>,
         time_span: &SyncTimeSpan,
@@ -191,10 +191,10 @@ impl O365 {
         let port = PORT_BASE + idx as u16;
 
         // generate properties file
-        let props_path = Self::generate_props(xdg, &col_id, port, &auth.user, token).await?;
+        let props_path = Self::generate_props(xdg, &col_id, port, &username, token).await?;
 
         // build URL
-        let user_enc = utf8_percent_encode(&auth.user, NON_ALPHANUMERIC).to_string();
+        let user_enc = utf8_percent_encode(&username, NON_ALPHANUMERIC).to_string();
         let col_enc = utf8_percent_encode(&col_id, NON_ALPHANUMERIC).to_string();
         let url = format!("http://localhost:{}/users/{}/{}/", port, user_enc, col_enc);
 
@@ -205,7 +205,7 @@ impl O365 {
             folder_id,
             url,
             read_only,
-            Some(auth),
+            Some(username),
             time_span,
             log.clone(),
         )
@@ -590,13 +590,6 @@ mod tests {
         xdg
     }
 
-    fn make_auth() -> SyncerAuth {
-        SyncerAuth {
-            user: "user@example.com".to_string(),
-            password: vec!["secret".to_string()],
-        }
-    }
-
     /// Builds a minimal `O365` using the supplied fake runners.
     ///
     /// The inner `VDirSyncer` is configured with `col_id = "mycol"` and `folder_id`.
@@ -610,7 +603,6 @@ mod tests {
     ) -> O365 {
         let xdg = make_xdg(tmp).await;
         let log = make_log(tmp.path()).await;
-        let auth = make_auth();
         let col_id = "mycol".to_string();
 
         let vdirsyncer = VDirSyncer::new_with_runner(
@@ -619,7 +611,7 @@ mod tests {
             folder_id,
             "http://localhost:25000/users/user/mycol/".to_string(),
             false,
-            Some(auth),
+            Some("user@example.com".to_string()),
             &crate::settings::SyncTimeSpan::default(),
             log.clone(),
             vdir_runner,

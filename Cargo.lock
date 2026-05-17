@@ -671,27 +671,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dbus"
-version = "0.9.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b942602992bb7acfd1f51c49811c58a610ef9181b6e66f3e519d79b540a3bf73"
-dependencies = [
- "libc",
- "libdbus-sys",
- "windows-sys",
-]
-
-[[package]]
-name = "dbus-secret-service"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "708b509edf7889e53d7efb0ffadd994cc6c2345ccb62f55cfd6b0682165e4fa6"
-dependencies = [
- "dbus",
- "zeroize",
-]
-
-[[package]]
 name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -874,6 +853,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "eventix-getpw"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "eventix-state",
+ "tokio",
+ "xdg",
+]
+
+[[package]]
 name = "eventix-ical"
 version = "0.1.0"
 dependencies = [
@@ -903,15 +893,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "xdg",
-]
-
-[[package]]
-name = "eventix-keyring"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dbus-secret-service",
 ]
 
 [[package]]
@@ -1707,15 +1688,6 @@ name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
-
-[[package]]
-name = "libdbus-sys"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "328c4789d42200f1eeec05bd86c9c13c7f091d2ba9a6ea35acdf51f31bc0f043"
-dependencies = [
- "pkg-config",
-]
 
 [[package]]
 name = "linux-raw-sys"
@@ -3260,26 +3232,6 @@ name = "zerocopy-derive"
 version = "0.8.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70e3cd084b1788766f53af483dd21f93881ff30d7320490ec3ef7526d203bad4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "zeroize"
-version = "1.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
-dependencies = [
- "zeroize_derive",
-]
-
-[[package]]
-name = "zeroize_derive"
-version = "1.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
 dependencies = [
  "proc-macro2",
  "quote",

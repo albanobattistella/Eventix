@@ -1,10 +1,13 @@
 [package]
-name = "eventix-keyring"
+name = "eventix-getpw"
 version = "0.1.0"
 edition = "2021"
-publish = false
+build = "../build.rs"
 
 [dependencies]
-dbus-secret-service = "4.0.0"
+eventix-state.workspace = true
+tokio.workspace = true
+xdg.workspace = true
+
 clap = { version = "4.5.1", features = ["derive"] }
 anyhow = "1.0.86"

@@ -480,7 +480,7 @@ def cmd_dist(args):
 
     # install binaries
     bins = Path("target") / "release"
-    for bin_name in ["eventix", "eventix-app", "eventix-import", "eventix-keyring"]:
+    for bin_name in ["eventix", "eventix-app", "eventix-import", "eventix-getpw"]:
         subprocess.run(["install", "-Dm755", bins / bin_name, "-t", prefix / "bin"], check=True)
 
     # install desktop files
