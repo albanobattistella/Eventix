@@ -49,7 +49,7 @@ async fn add_calendar_creates_remote_calendar_visible_to_other_peer() {
     }
 
     let pair = RadicalePair::new(false, false).await;
-    let observer = pair.spawn_peer();
+    let observer = pair.spawn_peer().await;
     assert!(
         !observer.calendar_dir(REMOTE_CALENDAR_FOLDER).exists(),
         "observer cache should not exist before addcal test"
@@ -291,7 +291,7 @@ async fn delete_calendar_by_folder_removes_remote_calendar_for_other_peer() {
     }
 
     let pair = RadicalePair::new(false, false).await;
-    let observer_before_delete = pair.spawn_peer();
+    let observer_before_delete = pair.spawn_peer().await;
     let producer_cal = pair
         .producer()
         .create_calendar(REMOTE_CALENDAR_NAME, REMOTE_CALENDAR_FOLDER)
@@ -330,7 +330,7 @@ async fn delete_calendar_by_folder_removes_remote_calendar_for_other_peer() {
         .delete_calendar_by_folder(REMOTE_CALENDAR_FOLDER)
         .await;
 
-    let observer_after_delete = pair.spawn_peer();
+    let observer_after_delete = pair.spawn_peer().await;
     let json = observer_after_delete.discover_collection().await;
     assert_eq!(json["changed"], true);
     assert_eq!(
@@ -380,7 +380,7 @@ async fn delete_calendar_by_folder_fails_for_read_only_collection() {
     assert_eq!(status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     assert!(!body.is_empty(), "unexpected body:\n{body}");
 
-    let observer = pair.spawn_peer();
+    let observer = pair.spawn_peer().await;
     let json = observer.discover_collection().await;
     assert_eq!(json["changed"], true);
     assert_eq!(

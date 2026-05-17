@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod crypto;
 mod migration;
 mod misc;
 mod persalarms;
@@ -33,9 +34,10 @@ use tokio::sync::Mutex;
 use tracing::debug;
 use xdg::BaseDirectories;
 
+pub use crypto::{decrypt_password, encrypt_password, retrieve_portal_secret};
 pub use persalarms::{PersonalAlarms, PersonalCalendarAlarms};
 pub use settings::{
-    CalendarAlarmType, CalendarSettings, CollectionSettings, EmailAccount, PasswordSource,
+    CalendarAlarmType, CalendarSettings, CollectionSettings, EmailAccount, EncryptedPassword,
     Settings, SyncTimeBound, SyncTimeSpan, SyncerType,
 };
 pub use sync::{SyncColResult, SyncResult, Syncer, create_calendar_by_folder, log_file};

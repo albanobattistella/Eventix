@@ -293,19 +293,16 @@ async fn get_sync(
     let auth = match col.syncer() {
         SyncerType::VDirSyncer {
             username: Some(username),
-            password_source: Some(password_source),
             ..
         } => Some(SyncerAuth {
             user: username.clone(),
-            password: password_source.build_command(),
+            password: vec![],
         }),
-        SyncerType::O365 {
-            password_source, ..
-        } => {
+        SyncerType::O365 { .. } => {
             let user = col.email().map(|e| e.address());
             Some(SyncerAuth {
                 user: user.unwrap(),
-                password: password_source.build_command(),
+                password: vec![],
             })
         }
         _ => None,

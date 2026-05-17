@@ -137,7 +137,7 @@ pub fn make_state_with_email(tmp: &TempDir) -> (EventixState, PathBuf) {
         url: "http://localhost".to_string(),
         read_only: false,
         username: None,
-        password_source: None,
+        password: None,
         time_span: Default::default(),
     };
     let mut col = CollectionSettings::new(syncer);

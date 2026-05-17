@@ -88,7 +88,7 @@ fn make_vdir_state() -> (eventix_state::EventixState, TempDir) {
         url: "https://dav.example.com/".to_string(),
         read_only: false,
         username: None,
-        password_source: None,
+        password: None,
         time_span: eventix_state::SyncTimeSpan {
             start: eventix_state::SyncTimeBound::Infinite,
             end: eventix_state::SyncTimeBound::Infinite,
