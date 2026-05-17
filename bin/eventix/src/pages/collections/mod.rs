@@ -63,7 +63,7 @@ impl Form {
             }
         }
 
-        self.syncer.check(page, locale)
+        self.syncer.check(page, locale, !edit)
     }
 }
 
