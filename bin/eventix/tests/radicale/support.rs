@@ -325,6 +325,7 @@ impl RadicalePeer {
         self.tmp
             .path()
             .join("data")
+            .join(eventix::APP_ID)
             .join("vdirsyncer")
             .join(format!("{COL_ID}-data"))
             .join(folder)

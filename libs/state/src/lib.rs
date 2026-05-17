@@ -558,11 +558,15 @@ pub fn write_to_file<S: Serialize>(filename: &PathBuf, data: S) -> anyhow::Resul
 }
 
 /// Sets `XDG_DATA_HOME` to `data` and `XDG_CONFIG_HOME` to `config`, constructs a
-/// `BaseDirectories` snapshot, then releases the lock before returning.
+/// `BaseDirectories` snapshot for `prefix`, then releases the lock before returning.
 ///
 /// The entire set-and-snapshot region is performed while holding a lock, so concurrent test
 /// threads cannot observe a partially-updated environment.
-pub fn with_test_xdg(data: &std::path::Path, config: &std::path::Path) -> xdg::BaseDirectories {
+pub fn with_test_xdg_prefix(
+    data: &std::path::Path,
+    config: &std::path::Path,
+    prefix: &str,
+) -> xdg::BaseDirectories {
     static XDG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     let _guard = XDG_LOCK.lock().unwrap();
@@ -573,7 +577,16 @@ pub fn with_test_xdg(data: &std::path::Path, config: &std::path::Path) -> xdg::B
         std::env::set_var("XDG_DATA_HOME", data);
         std::env::set_var("XDG_CONFIG_HOME", config);
     }
-    xdg::BaseDirectories::with_prefix("")
+    xdg::BaseDirectories::with_prefix(prefix)
+}
+
+/// Sets `XDG_DATA_HOME` to `data` and `XDG_CONFIG_HOME` to `config`, constructs a
+/// `BaseDirectories` snapshot, then releases the lock before returning.
+///
+/// The entire set-and-snapshot region is performed while holding a lock, so concurrent test
+/// threads cannot observe a partially-updated environment.
+pub fn with_test_xdg(data: &std::path::Path, config: &std::path::Path) -> xdg::BaseDirectories {
+    with_test_xdg_prefix(data, config, "")
 }
 
 #[cfg(test)]

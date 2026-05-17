@@ -43,7 +43,28 @@ pub(crate) trait CommandRunner: Send + Sync {
 }
 
 /// Production [`CommandRunner`] that spawns real subprocesses via [`tokio::process::Command`].
-pub(crate) struct RealCommandRunner;
+pub(crate) struct RealCommandRunner {
+    data_home: PathBuf,
+    config_home: PathBuf,
+}
+
+impl RealCommandRunner {
+    fn new(xdg: &BaseDirectories) -> Self {
+        let data_home = xdg.get_data_home().unwrap();
+        let config_home = xdg.get_config_home().unwrap();
+        Self {
+            // eventix-getpw constructs its own app-prefixed XDG paths, so the subprocess needs the
+            // raw XDG roots rather than the already-prefixed directories used by the parent app.
+            data_home: data_home.parent().unwrap_or(&data_home).to_path_buf(),
+            config_home: config_home.parent().unwrap_or(&config_home).to_path_buf(),
+        }
+    }
+
+    fn apply_env(&self, cmd: &mut Command) {
+        cmd.env("XDG_DATA_HOME", &self.data_home);
+        cmd.env("XDG_CONFIG_HOME", &self.config_home);
+    }
+}
 
 #[async_trait]
 impl CommandRunner for RealCommandRunner {
@@ -54,6 +75,7 @@ impl CommandRunner for RealCommandRunner {
         stdin_data: Option<&[u8]>,
     ) -> anyhow::Result<Output> {
         let mut cmd = Command::new(program);
+        self.apply_env(&mut cmd);
         cmd.kill_on_drop(true);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -83,6 +105,7 @@ impl CommandRunner for RealCommandRunner {
         yes_response: &[u8],
     ) -> anyhow::Result<(ExitStatus, Vec<String>)> {
         let mut cmd = Command::new(program);
+        self.apply_env(&mut cmd);
         cmd.kill_on_drop(true);
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::null());
@@ -251,7 +274,7 @@ impl VDirSyncer {
             username,
             time_span,
             log,
-            Arc::new(RealCommandRunner),
+            Arc::new(RealCommandRunner::new(xdg)),
         )
         .await
     }

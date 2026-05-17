@@ -57,6 +57,7 @@ def dev_env():
     # for debugging
     env["RUST_LOG"] = "trace"
     env["RUST_BACKTRACE"] = "full"
+    env["EVENTIX_TESTS"] = "1"
     return env
 
 
@@ -130,6 +131,11 @@ def cmd_vdirsyncer(args):
 
 def cmd_test(args):
     """Runs cargo tests with the prepared development environment."""
+    # Some integration tests spawn helper binaries like eventix-getpw via PATH.
+    # cargo test only rebuilds the selected test targets, so ensure the helper
+    # binaries are up to date before running tests.
+    subprocess.run(["cargo", "build", "--bin", "eventix-getpw"], check=True)
+
     cmd = ["cargo", "test"]
     cmd.extend(args.cargo_args)
     if args.nocapture:

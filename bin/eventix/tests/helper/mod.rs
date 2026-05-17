@@ -22,6 +22,26 @@ use eventix_state::{
 use tempfile::TempDir;
 use tower::ServiceExt;
 
+fn make_test_xdg(data_home: &Path, config_home: &Path) -> xdg::BaseDirectories {
+    eventix_state::with_test_xdg_prefix(data_home, config_home, eventix::APP_ID)
+}
+
+fn init_test_dirs(xdg: &xdg::BaseDirectories) {
+    std::fs::create_dir_all(xdg.get_data_home().unwrap()).unwrap();
+    std::fs::create_dir_all(xdg.get_config_home().unwrap()).unwrap();
+
+    let locale_dir = xdg.get_data_home().unwrap().join("locale");
+    std::fs::create_dir_all(&locale_dir).unwrap();
+    std::fs::write(
+        locale_dir.join("English.toml"),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/locale/English.toml"
+        )),
+    )
+    .unwrap();
+}
+
 /// Calendar and collection IDs used across all tests.
 pub const COL_ID: &str = "col1";
 pub const CAL_ID: &str = "cal1";
@@ -119,14 +139,15 @@ pub fn make_state_two_cals(cal_dir: &Path) -> (EventixState, std::path::PathBuf)
 /// return a non-`None` account (e.g. `respond`) need this variant.
 ///
 /// The directory layout matches VDirSyncer's path resolution:
-/// `{xdg_data_home}/vdirsyncer/{COL_ID}-data/{CAL_ID}`.
+/// `{xdg_data_home}/{APP_ID}/vdirsyncer/{COL_ID}-data/{CAL_ID}`.
 #[allow(dead_code)]
 pub fn make_state_with_email(tmp: &TempDir) -> (EventixState, PathBuf) {
     // VDirSyncer resolves its collection path as:
     //   xdg.get_data_file("vdirsyncer").join("{col_id}-data")
-    // i.e. {xdg_data_home}/vdirsyncer/{col_id}-data/{cal_folder}
+    // i.e. {xdg_data_home}/{APP_ID}/vdirsyncer/{col_id}-data/{cal_folder}
     let data_home = tmp.path().to_path_buf();
     let cal_dir = data_home
+        .join(eventix::APP_ID)
         .join("vdirsyncer")
         .join(format!("{COL_ID}-data"))
         .join(CAL_ID);
@@ -148,18 +169,9 @@ pub fn make_state_with_email(tmp: &TempDir) -> (EventixState, PathBuf) {
     col.all_calendars_mut().insert(CAL_ID.to_string(), cal);
 
     let config_tmp = TempDir::new().unwrap();
-    let locale_dir = data_home.join("locale");
-    std::fs::create_dir_all(&locale_dir).unwrap();
-    std::fs::write(
-        locale_dir.join("English.toml"),
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../data/locale/English.toml"
-        )),
-    )
-    .unwrap();
+    let xdg = Arc::new(make_test_xdg(&data_home, config_tmp.path()));
+    init_test_dirs(&xdg);
 
-    let xdg = Arc::new(eventix_state::with_test_xdg(&data_home, config_tmp.path()));
     let mut settings = Settings::new(xdg.get_config_home().unwrap().join("settings.toml"));
     settings.collections_mut().insert(COL_ID.to_string(), col);
     settings.write_to_file().expect("write settings");
@@ -175,19 +187,8 @@ pub fn make_state_with_email(tmp: &TempDir) -> (EventixState, PathBuf) {
 /// files back to disk during tests that exercise save paths.
 fn make_state_from_col_in(col: CollectionSettings, data_home: &Path) -> EventixState {
     let config_tmp = TempDir::new().unwrap();
-
-    let locale_dir = data_home.join("locale");
-    std::fs::create_dir_all(&locale_dir).unwrap();
-    std::fs::write(
-        locale_dir.join("English.toml"),
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../data/locale/English.toml"
-        )),
-    )
-    .unwrap();
-
-    let xdg = Arc::new(eventix_state::with_test_xdg(data_home, config_tmp.path()));
+    let xdg = Arc::new(make_test_xdg(data_home, config_tmp.path()));
+    init_test_dirs(&xdg);
 
     let mut settings = Settings::new(xdg.get_config_home().unwrap().join("settings.toml"));
     settings.collections_mut().insert(COL_ID.to_string(), col);
@@ -199,19 +200,8 @@ fn make_state_from_col_in(col: CollectionSettings, data_home: &Path) -> EventixS
 
 fn make_state_from_col_in_tz(col: CollectionSettings, data_home: &Path, tz: &str) -> EventixState {
     let config_tmp = TempDir::new().unwrap();
-
-    let locale_dir = data_home.join("locale");
-    std::fs::create_dir_all(&locale_dir).unwrap();
-    std::fs::write(
-        locale_dir.join("English.toml"),
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../data/locale/English.toml"
-        )),
-    )
-    .unwrap();
-
-    let xdg = Arc::new(eventix_state::with_test_xdg(data_home, config_tmp.path()));
+    let xdg = Arc::new(make_test_xdg(data_home, config_tmp.path()));
+    init_test_dirs(&xdg);
 
     let mut settings = Settings::new(xdg.get_config_home().unwrap().join("settings.toml"));
     settings.collections_mut().insert(COL_ID.to_string(), col);
@@ -233,21 +223,8 @@ fn make_state_from_col_in_tz(col: CollectionSettings, data_home: &Path, tz: &str
 pub fn make_state_from_col(col: CollectionSettings) -> (EventixState, TempDir) {
     let config_tmp = TempDir::new().unwrap();
     let data_home = config_tmp.path().join("data");
-
-    // Write the locale files into the temp data directory so that State::new can find them via
-    // XDG_DATA_HOME without reading from the project source tree.
-    let locale_dir = data_home.join("locale");
-    std::fs::create_dir_all(&locale_dir).unwrap();
-    std::fs::write(
-        locale_dir.join("English.toml"),
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../data/locale/English.toml"
-        )),
-    )
-    .unwrap();
-
-    let xdg = Arc::new(eventix_state::with_test_xdg(&data_home, config_tmp.path()));
+    let xdg = Arc::new(make_test_xdg(&data_home, config_tmp.path()));
+    init_test_dirs(&xdg);
 
     let mut settings = Settings::new(xdg.get_config_home().unwrap().join("settings.toml"));
     settings.collections_mut().insert(COL_ID.to_string(), col);

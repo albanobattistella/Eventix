@@ -6,6 +6,7 @@
 mod helper;
 
 use axum::http::StatusCode;
+use eventix::APP_ID;
 use eventix_state::{CalendarSettings, CollectionSettings, Settings, SyncerType, load_from_file};
 use serde_json::Value;
 use tempfile::TempDir;
@@ -58,7 +59,8 @@ async fn delete_collection_removes_settings_store_and_log() {
 
     assert!(!log_path.exists(), "expected sync log to be removed");
 
-    let settings: Settings = load_from_file(&xdg_tmp.path().join("settings.toml")).unwrap();
+    let settings: Settings =
+        load_from_file(&xdg_tmp.path().join(APP_ID).join("settings.toml")).unwrap();
     assert!(!settings.collections().contains_key(COL_ID));
 }
 

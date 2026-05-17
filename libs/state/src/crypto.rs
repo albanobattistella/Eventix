@@ -36,6 +36,8 @@ pub enum CryptoError {
 
 pub type Result<T> = std::result::Result<T, CryptoError>;
 
+const TEST_PORTAL_SECRET_ENV: &str = "EVENTIX_TESTS";
+
 static PORTAL_SECRET: OnceCell<Vec<u8>> = OnceCell::const_new();
 
 /// Retrieves the secret from the secret portal
@@ -43,6 +45,13 @@ static PORTAL_SECRET: OnceCell<Vec<u8>> = OnceCell::const_new();
 /// If this has already been done, the cached secret will be returned. Otherwise, the secret is
 /// retrieved from the secret portal.
 pub async fn retrieve_portal_secret() -> Result<Vec<u8>> {
+    // this environment variable is set for "./b test" in which case we use the same static secret
+    // in both the tests itself and the spawned child processes like eventix-getpw to avoid calling
+    // the secret portal.
+    if std::env::var(TEST_PORTAL_SECRET_ENV).is_ok() {
+        return Ok("eventix test secret".to_string().into());
+    }
+
     PORTAL_SECRET
         .get_or_try_init(|| async {
             let secret = Secret::new().await?;
