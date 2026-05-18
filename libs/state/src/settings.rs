@@ -233,37 +233,13 @@ impl SyncTimeSpan {
     }
 }
 
-/// The source for passwords that we feed vdirsyncer with.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum PasswordSource {
-    /// Looks up the secret from the desktop keyring via eventix-keyring.
-    SecretService {
-        /// Key/Value pairs used to search the keyring item.
-        attributes: BTreeMap<String, String>,
-    },
-    /// Runs an custom command to retrieve the password.
-    Command {
-        /// Shell command and arguments used to retrieve the password.
-        command: Vec<String>,
-    },
-}
-
-impl PasswordSource {
-    /// Returns the command to execute to retrieve the password.
-    pub fn build_command(&self) -> Vec<String> {
-        match self {
-            Self::Command { command } => command.clone(),
-            Self::SecretService { attributes } => {
-                let mut cmd = vec!["eventix-keyring".to_string()];
-                if let Some((k, v)) = attributes.first_key_value() {
-                    cmd.push(k.clone());
-                    cmd.push(v.clone());
-                }
-                cmd
-            }
-        }
-    }
+/// A persisted representation of an encrypted password.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EncryptedPassword {
+    /// The random nonce used for encryption.
+    pub nonce: String,
+    /// The encrypted password as base64-encoded ciphertext.
+    pub ciphertext: String,
 }
 
 /// The backend used to synchronise and provide calendar data for a collection.
@@ -284,9 +260,9 @@ pub enum SyncerType {
         read_only: bool,
         /// Optional username for authentication; if absent, no credentials are sent.
         username: Option<String>,
-        /// Credentials source used to retrieve the password at runtime, if any.
+        /// The encrypted password, if any.
         #[serde(default)]
-        password_source: Option<PasswordSource>,
+        password: Option<EncryptedPassword>,
         /// The time range to synchronise from the CalDAV server.
         ///
         /// Defaults to both bounds being `Infinite`, which synchronises everything.
@@ -299,8 +275,8 @@ pub enum SyncerType {
         email: EmailAccount,
         /// When `true`, the remote calendar is treated as read-only and local changes are not pushed.
         read_only: bool,
-        /// Credentials source used to retrieve the OAuth password/token at runtime.
-        password_source: PasswordSource,
+        /// The encrypted password.
+        password: EncryptedPassword,
         /// The time range to synchronise from the CalDAV server.
         ///
         /// Defaults to both bounds being `Infinite`, which synchronises everything.
@@ -317,6 +293,15 @@ impl SyncerType {
         match self {
             Self::VDirSyncer { email, .. } => Some(email),
             Self::O365 { email, .. } => Some(email),
+            _ => None,
+        }
+    }
+
+    /// Returns the encrypted password for this syncer, if any.
+    pub fn password(&self) -> Option<&EncryptedPassword> {
+        match self {
+            Self::VDirSyncer { password, .. } => password.as_ref(),
+            Self::O365 { password, .. } => Some(password),
             _ => None,
         }
     }
@@ -560,7 +545,7 @@ mod tests {
             url: "https://dav.example.com".to_string(),
             read_only: false,
             username: Some("alice".to_string()),
-            password_source: None,
+            password: None,
             time_span: Default::default(),
         }
     }

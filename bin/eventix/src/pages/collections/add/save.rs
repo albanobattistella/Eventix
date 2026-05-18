@@ -26,7 +26,7 @@ async fn action_update(
 
     {
         let cols = state.settings_mut().collections_mut();
-        let syncer = form.syncer.to_syncer().unwrap();
+        let syncer = form.syncer.to_syncer(None).await?;
         let col = CollectionSettings::new(syncer);
         cols.insert(form.name.clone().unwrap(), col);
     }

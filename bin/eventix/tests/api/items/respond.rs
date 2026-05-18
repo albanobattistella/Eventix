@@ -22,6 +22,7 @@ use super::{write_event_ics, write_recurring_event_ics};
 fn make_email_cal_dir(tmp: &TempDir) -> PathBuf {
     let cal_dir = tmp
         .path()
+        .join(eventix::APP_ID)
         .join("vdirsyncer")
         .join(format!("{COL_ID}-data"))
         .join(CAL_ID);

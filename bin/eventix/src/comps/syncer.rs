@@ -2,18 +2,22 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use anyhow::{Context, anyhow};
 use askama::Template;
 use axum::http::Uri;
 use email_address::EmailAddress;
 use eventix_locale::Locale;
-use eventix_state::{EmailAccount, SyncTimeBound, SyncTimeSpan, SyncerType};
+use eventix_state::{
+    EmailAccount, EncryptedPassword, SyncTimeBound, SyncTimeSpan, SyncerType, encrypt_password,
+    retrieve_portal_secret,
+};
 use formatx::formatx;
 use serde::{Deserialize, Deserializer, de};
 use std::fmt::{self, Display};
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::comps::pwsource::{PasswordSourceRequest, PasswordSourceTemplate};
+use crate::comps::password::{PasswordRequest, PasswordTemplate};
 use crate::html::filters;
 use crate::pages::Page;
 
@@ -76,7 +80,7 @@ pub struct SyncerRequest {
     vdir_url: String,
     vdir_readonly: Option<String>,
     vdir_username: String,
-    vdir_pw: PasswordSourceRequest,
+    vdir_pw: PasswordRequest,
     vdir_time_span: String,
     #[serde(
         deserialize_with = "SyncerRequest::deserialize_years",
@@ -86,7 +90,7 @@ pub struct SyncerRequest {
     o365_name: String,
     o365_email: String,
     o365_readonly: Option<String>,
-    o365_pw: PasswordSourceRequest,
+    o365_pw: PasswordRequest,
     o365_time_span: String,
     #[serde(
         deserialize_with = "SyncerRequest::deserialize_years",
@@ -105,13 +109,13 @@ impl Default for SyncerRequest {
             vdir_url: String::new(),
             vdir_readonly: None,
             vdir_username: String::new(),
-            vdir_pw: PasswordSourceRequest::default(),
+            vdir_pw: PasswordRequest::default(),
             vdir_time_span: String::new(),
             vdir_time_span_years: DEFAULT_TIME_SPAN_YEARS,
             o365_name: String::new(),
             o365_email: String::new(),
             o365_readonly: None,
-            o365_pw: PasswordSourceRequest::default(),
+            o365_pw: PasswordRequest::default(),
             o365_time_span: String::new(),
             o365_time_span_years: DEFAULT_TIME_SPAN_YEARS,
             fs_path: String::new(),
@@ -139,7 +143,7 @@ impl SyncerRequest {
                 url,
                 read_only,
                 username,
-                password_source,
+                password: _,
                 time_span,
             } => {
                 sync.vdir_name = email.name().clone();
@@ -150,7 +154,6 @@ impl SyncerRequest {
                 };
                 sync.vdir_url = url.clone();
                 sync.vdir_username = username.clone().unwrap_or_default();
-                sync.vdir_pw = PasswordSourceRequest::from_source(password_source.as_ref());
                 (sync.vdir_time_span, sync.vdir_time_span_years) =
                     Self::time_span_to_fields(time_span);
             }
@@ -158,7 +161,7 @@ impl SyncerRequest {
             SyncerType::O365 {
                 email,
                 read_only,
-                password_source,
+                password: _,
                 time_span,
             } => {
                 sync.o365_name = email.name().clone();
@@ -167,7 +170,6 @@ impl SyncerRequest {
                     true => Some(String::new()),
                     false => None,
                 };
-                sync.o365_pw = PasswordSourceRequest::from_source(Some(password_source));
                 (sync.o365_time_span, sync.o365_time_span_years) =
                     Self::time_span_to_fields(time_span);
             }
@@ -184,7 +186,12 @@ impl SyncerRequest {
         self.syncer
     }
 
-    pub fn check(&self, page: &mut Page, locale: &Arc<dyn Locale + Send + Sync>) -> bool {
+    pub fn check(
+        &self,
+        page: &mut Page,
+        locale: &Arc<dyn Locale + Send + Sync>,
+        is_add: bool,
+    ) -> bool {
         let syncer = self.syncer.as_ref().unwrap();
         match syncer {
             Syncer::VDirSyncer => {
@@ -208,7 +215,7 @@ impl SyncerRequest {
                     return false;
                 }
 
-                if !self.vdir_username.is_empty() && !self.vdir_pw.check(locale, page) {
+                if !self.vdir_username.is_empty() && !self.vdir_pw.check(locale, page, is_add) {
                     return false;
                 }
                 true
@@ -228,7 +235,7 @@ impl SyncerRequest {
                     return false;
                 }
 
-                if !self.o365_pw.check(locale, page) {
+                if !self.o365_pw.check(locale, page, is_add) {
                     return false;
                 }
                 true
@@ -249,27 +256,37 @@ impl SyncerRequest {
         }
     }
 
-    pub fn to_syncer(&self) -> Option<SyncerType> {
-        let syncer = self.syncer?;
+    pub async fn to_syncer(&self, cur: Option<&SyncerType>) -> anyhow::Result<SyncerType> {
+        let syncer = self.syncer.ok_or_else(|| anyhow!("Syncer missing!?"))?;
         let ty = match syncer {
-            Syncer::VDirSyncer => SyncerType::VDirSyncer {
-                email: EmailAccount::new(self.vdir_name.clone(), self.vdir_email.clone()),
-                url: self.vdir_url.clone(),
-                read_only: self.vdir_readonly.is_some(),
-                username: match &self.vdir_username {
+            Syncer::VDirSyncer => {
+                let username = match &self.vdir_username {
                     user if !user.is_empty() => Some(user.clone()),
                     _ => None,
-                },
-                password_source: self.vdir_pw.to_source(),
-                time_span: Self::fields_to_time_span(
-                    &self.vdir_time_span,
-                    self.vdir_time_span_years,
-                ),
-            },
+                };
+                SyncerType::VDirSyncer {
+                    email: EmailAccount::new(self.vdir_name.clone(), self.vdir_email.clone()),
+                    url: self.vdir_url.clone(),
+                    read_only: self.vdir_readonly.is_some(),
+                    password: if username.is_some() {
+                        Self::determine_password(self.vdir_pw.get(), cur).await?
+                    } else {
+                        None
+                    },
+                    username,
+                    time_span: Self::fields_to_time_span(
+                        &self.vdir_time_span,
+                        self.vdir_time_span_years,
+                    ),
+                }
+            }
             Syncer::O365 => SyncerType::O365 {
                 email: EmailAccount::new(self.o365_name.clone(), self.o365_email.clone()),
                 read_only: self.o365_readonly.is_some(),
-                password_source: self.o365_pw.to_source().unwrap(),
+                // here we can unwrap, because O365 always has a password
+                password: Self::determine_password(self.o365_pw.get(), cur)
+                    .await?
+                    .unwrap(),
                 time_span: Self::fields_to_time_span(
                     &self.o365_time_span,
                     self.o365_time_span_years,
@@ -279,7 +296,23 @@ impl SyncerRequest {
                 path: self.fs_path.clone(),
             },
         };
-        Some(ty)
+        Ok(ty)
+    }
+
+    async fn determine_password(
+        pw: &String,
+        cur: Option<&SyncerType>,
+    ) -> anyhow::Result<Option<EncryptedPassword>> {
+        match pw {
+            // we verify before that is PW is not empty on adds (where `cur` is None)
+            pw if pw.is_empty() => Ok(cur.unwrap().password().cloned()),
+            pw => {
+                let secret = retrieve_portal_secret().await?;
+                Ok(Some(
+                    encrypt_password(&secret, pw).context("Encrypt password")?,
+                ))
+            }
+        }
     }
 
     /// Deserializes the years spinner value, accepting both plain integers and string-encoded
@@ -328,6 +361,7 @@ pub struct SyncerTemplate<'a> {
     id: String,
     value: SyncerRequest,
     only: Option<Syncer>,
+    is_edit: bool,
 }
 
 impl<'a> SyncerTemplate<'a> {
@@ -336,6 +370,7 @@ impl<'a> SyncerTemplate<'a> {
         name: &'a str,
         value: SyncerRequest,
         only: Option<Syncer>,
+        is_edit: bool,
     ) -> Self {
         Self {
             name,
@@ -343,6 +378,7 @@ impl<'a> SyncerTemplate<'a> {
             value,
             only,
             locale,
+            is_edit,
         }
     }
 
@@ -353,19 +389,19 @@ impl<'a> SyncerTemplate<'a> {
         }
     }
 
-    pub fn vdir_pw(&self) -> PasswordSourceTemplate {
-        PasswordSourceTemplate::new(
+    pub fn vdir_pw(&self) -> PasswordTemplate {
+        PasswordTemplate::new(
             self.locale.clone(),
             format!("{}[vdir_pw]", self.name),
-            self.value.vdir_pw.clone(),
+            self.is_edit,
         )
     }
 
-    pub fn o365_pw(&self) -> PasswordSourceTemplate {
-        PasswordSourceTemplate::new(
+    pub fn o365_pw(&self) -> PasswordTemplate {
+        PasswordTemplate::new(
             self.locale.clone(),
             format!("{}[o365_pw]", self.name),
-            self.value.o365_pw.clone(),
+            self.is_edit,
         )
     }
 }

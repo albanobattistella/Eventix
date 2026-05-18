@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod crypto;
 mod migration;
 mod misc;
 mod persalarms;
@@ -12,7 +13,7 @@ mod sync;
 pub mod util;
 
 /// The current version of the persisted state files.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 use anyhow::{Context, anyhow};
 use chrono::NaiveDateTime;
@@ -33,9 +34,10 @@ use tokio::sync::Mutex;
 use tracing::debug;
 use xdg::BaseDirectories;
 
+pub use crypto::{decrypt_password, encrypt_password, retrieve_portal_secret};
 pub use persalarms::{PersonalAlarms, PersonalCalendarAlarms};
 pub use settings::{
-    CalendarAlarmType, CalendarSettings, CollectionSettings, EmailAccount, PasswordSource,
+    CalendarAlarmType, CalendarSettings, CollectionSettings, EmailAccount, EncryptedPassword,
     Settings, SyncTimeBound, SyncTimeSpan, SyncerType,
 };
 pub use sync::{SyncColResult, SyncResult, Syncer, create_calendar_by_folder, log_file};
@@ -556,11 +558,15 @@ pub fn write_to_file<S: Serialize>(filename: &PathBuf, data: S) -> anyhow::Resul
 }
 
 /// Sets `XDG_DATA_HOME` to `data` and `XDG_CONFIG_HOME` to `config`, constructs a
-/// `BaseDirectories` snapshot, then releases the lock before returning.
+/// `BaseDirectories` snapshot for `prefix`, then releases the lock before returning.
 ///
 /// The entire set-and-snapshot region is performed while holding a lock, so concurrent test
 /// threads cannot observe a partially-updated environment.
-pub fn with_test_xdg(data: &std::path::Path, config: &std::path::Path) -> xdg::BaseDirectories {
+pub fn with_test_xdg_prefix(
+    data: &std::path::Path,
+    config: &std::path::Path,
+    prefix: &str,
+) -> xdg::BaseDirectories {
     static XDG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     let _guard = XDG_LOCK.lock().unwrap();
@@ -571,7 +577,16 @@ pub fn with_test_xdg(data: &std::path::Path, config: &std::path::Path) -> xdg::B
         std::env::set_var("XDG_DATA_HOME", data);
         std::env::set_var("XDG_CONFIG_HOME", config);
     }
-    xdg::BaseDirectories::with_prefix("")
+    xdg::BaseDirectories::with_prefix(prefix)
+}
+
+/// Sets `XDG_DATA_HOME` to `data` and `XDG_CONFIG_HOME` to `config`, constructs a
+/// `BaseDirectories` snapshot, then releases the lock before returning.
+///
+/// The entire set-and-snapshot region is performed while holding a lock, so concurrent test
+/// threads cannot observe a partially-updated environment.
+pub fn with_test_xdg(data: &std::path::Path, config: &std::path::Path) -> xdg::BaseDirectories {
+    with_test_xdg_prefix(data, config, "")
 }
 
 #[cfg(test)]

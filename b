@@ -57,6 +57,7 @@ def dev_env():
     # for debugging
     env["RUST_LOG"] = "trace"
     env["RUST_BACKTRACE"] = "full"
+    env["EVENTIX_TESTS"] = "1"
     return env
 
 
@@ -130,6 +131,11 @@ def cmd_vdirsyncer(args):
 
 def cmd_test(args):
     """Runs cargo tests with the prepared development environment."""
+    # Some integration tests spawn helper binaries like eventix-getpw via PATH.
+    # cargo test only rebuilds the selected test targets, so ensure the helper
+    # binaries are up to date before running tests.
+    subprocess.run(["cargo", "build", "--bin", "eventix-getpw"], check=True)
+
     cmd = ["cargo", "test"]
     cmd.extend(args.cargo_args)
     if args.nocapture:
@@ -141,19 +147,20 @@ def cmd_coverage(args):
     """Generates code coverage information for the workspace."""
     cmd = [
         "cargo", "llvm-cov",
+        "--all-features",
         "--workspace",
         "--exclude", "eventix-import",
         "--exclude", "eventix-app",
-        "--exclude", "evlist"
     ]
+    cmd.extend(args.cargo_args)
 
     if not args.file:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, env=dev_env(), check=True)
         return
 
     with tempfile.TemporaryDirectory() as tmpdir:
         report_path = Path(tmpdir) / "coverage.json"
-        subprocess.run(cmd + ["--json", "--output-path", str(report_path)], check=True)
+        subprocess.run(cmd + ["--json", "--output-path", str(report_path)], env=dev_env(), check=True)
         report = json.loads(report_path.read_text())
     covered_files = find_covered_files(report, args.file)
     for idx, covered_file in enumerate(covered_files):
@@ -480,7 +487,7 @@ def cmd_dist(args):
 
     # install binaries
     bins = Path("target") / "release"
-    for bin_name in ["eventix", "eventix-app", "eventix-import", "eventix-keyring"]:
+    for bin_name in ["eventix", "eventix-app", "eventix-import", "eventix-getpw"]:
         subprocess.run(["install", "-Dm755", bins / bin_name, "-t", prefix / "bin"], check=True)
 
     # install desktop files
@@ -560,9 +567,8 @@ def main():
     test_parser.set_defaults(func=cmd_test)
 
     coverage_parser = subparsers.add_parser("coverage", help="Generate code coverage information")
-    coverage_parser.add_argument(
-        "file", nargs="?", help="Show line-by-line coverage for a single file"
-    )
+    coverage_parser.add_argument("--file", help="Show line-by-line coverage for a single file")
+    coverage_parser.set_defaults(cargo_args=[])
     coverage_parser.set_defaults(func=cmd_coverage)
 
     flatpak_src_parser = subparsers.add_parser("flatpak-sources", help="Generate flatpak sources")
@@ -596,7 +602,7 @@ def main():
     dist_parser.set_defaults(func=cmd_dist)
 
     args, unknown = parser.parse_known_args()
-    if args.command == "test":
+    if args.command == "test" or args.command == "coverage":
         args.cargo_args = unknown
     elif unknown:
         parser.error("unrecognized arguments: {}".format(" ".join(unknown)))

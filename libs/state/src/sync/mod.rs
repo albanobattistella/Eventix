@@ -70,14 +70,6 @@ pub trait Syncer: Send {
     }
 }
 
-/// Credentials used to authenticate with a remote syncer backend.
-pub struct SyncerAuth {
-    /// The account username (typically an email address).
-    user: String,
-    /// Command argument array for vdirsyncer's password.fetch.
-    password: Vec<String>,
-}
-
 /// The outcome of a single collection or calendar sync operation.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum SyncColResult {
@@ -290,23 +282,14 @@ async fn get_sync(
     auth_url: Option<String>,
 ) -> anyhow::Result<CollectionSync> {
     // Phase 1: extract credentials from the syncer configuration, if any.
-    let auth = match col.syncer() {
+    let username = match col.syncer() {
         SyncerType::VDirSyncer {
             username: Some(username),
-            password_source: Some(password_source),
             ..
-        } => Some(SyncerAuth {
-            user: username.clone(),
-            password: password_source.build_command(),
-        }),
-        SyncerType::O365 {
-            password_source, ..
-        } => {
+        } => Some(username.clone()),
+        SyncerType::O365 { .. } => {
             let user = col.email().map(|e| e.address());
-            Some(SyncerAuth {
-                user: user.unwrap(),
-                password: password_source.build_command(),
-            })
+            Some(user.unwrap())
         }
         _ => None,
     };
@@ -346,7 +329,7 @@ async fn get_sync(
                 folder_id,
                 url.clone(),
                 *read_only,
-                auth,
+                username,
                 time_span,
                 log,
             )
@@ -363,7 +346,7 @@ async fn get_sync(
                 id.clone(),
                 folder_id,
                 *read_only,
-                auth.unwrap(),
+                username.unwrap(),
                 auth_url.as_ref(),
                 token,
                 time_span,

@@ -96,7 +96,7 @@ eventix/
 │   ├── eventix/        # Core: Axum web server + calendar UI
 │   ├── app/            # GTK desktop wrapper with system tray
 │   ├── import/         # GTK dialog for importing .ics files
-│   ├── keyring/        # Helper to access the desktop keyring
+│   ├── getpw/          # Helper to access passwords from vdirsyncer
 ├── libs/
 │   ├── ical/           # RFC 5545 iCalendar parser and object model
 │   ├── state/          # Application state: settings, sync backends, alarms

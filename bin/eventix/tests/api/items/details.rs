@@ -159,6 +159,7 @@ async fn details_event_with_organizer_returns_html() {
     let tmp = TempDir::new().unwrap();
     let cal_dir = tmp
         .path()
+        .join(eventix::APP_ID)
         .join("vdirsyncer")
         .join(format!("{COL_ID}-data"))
         .join(CAL_ID);
@@ -183,6 +184,7 @@ async fn details_recurring_with_organizer_and_attendee_returns_html() {
     let tmp = TempDir::new().unwrap();
     let cal_dir = tmp
         .path()
+        .join(eventix::APP_ID)
         .join("vdirsyncer")
         .join(format!("{COL_ID}-data"))
         .join(CAL_ID);

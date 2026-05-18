@@ -63,7 +63,7 @@ pub async fn content_with(
 
     let html = CollectionEditTemplate {
         page,
-        syncer: SyncerTemplate::new(locale.clone(), "syncer", form.syncer, syncer),
+        syncer: SyncerTemplate::new(locale.clone(), "syncer", form.syncer, syncer, true),
         col_id: &req.col_id,
         prev: req.prev.as_ref(),
         locale,

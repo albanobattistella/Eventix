@@ -49,7 +49,7 @@ pub async fn content_with(
     let html = CollectionAddTemplate {
         page,
         name: form.name.unwrap_or_default(),
-        syncer: SyncerTemplate::new(locale.clone(), "syncer", form.syncer, None),
+        syncer: SyncerTemplate::new(locale.clone(), "syncer", form.syncer, None, false),
         prev: req.prev.as_ref(),
         locale,
     }

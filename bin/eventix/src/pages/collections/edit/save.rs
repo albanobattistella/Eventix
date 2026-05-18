@@ -32,7 +32,7 @@ async fn action_update(
         .get_mut(&req.col_id)
         .ok_or_else(|| anyhow!("No collection {}", req.col_id))?;
 
-    let syncer = form.syncer.to_syncer().unwrap();
+    let syncer = form.syncer.to_syncer(Some(col.syncer())).await?;
     if discriminant(&syncer) != discriminant(col.syncer()) {
         page.add_error(locale.translate("error.syncer_change"));
         return Ok(false);

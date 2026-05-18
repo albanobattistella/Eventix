@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 use xdg::BaseDirectories;
 
 use crate::settings::SyncTimeSpan;
-use crate::sync::{SyncColResult, Syncer, SyncerAuth, log_line};
+use crate::sync::{SyncColResult, Syncer, log_line};
 
 // --- CommandRunner trait and implementations ---
 
@@ -43,7 +43,28 @@ pub(crate) trait CommandRunner: Send + Sync {
 }
 
 /// Production [`CommandRunner`] that spawns real subprocesses via [`tokio::process::Command`].
-pub(crate) struct RealCommandRunner;
+pub(crate) struct RealCommandRunner {
+    data_home: PathBuf,
+    config_home: PathBuf,
+}
+
+impl RealCommandRunner {
+    fn new(xdg: &BaseDirectories) -> Self {
+        let data_home = xdg.get_data_home().unwrap();
+        let config_home = xdg.get_config_home().unwrap();
+        Self {
+            // eventix-getpw constructs its own app-prefixed XDG paths, so the subprocess needs the
+            // raw XDG roots rather than the already-prefixed directories used by the parent app.
+            data_home: data_home.parent().unwrap_or(&data_home).to_path_buf(),
+            config_home: config_home.parent().unwrap_or(&config_home).to_path_buf(),
+        }
+    }
+
+    fn apply_env(&self, cmd: &mut Command) {
+        cmd.env("XDG_DATA_HOME", &self.data_home);
+        cmd.env("XDG_CONFIG_HOME", &self.config_home);
+    }
+}
 
 #[async_trait]
 impl CommandRunner for RealCommandRunner {
@@ -54,6 +75,7 @@ impl CommandRunner for RealCommandRunner {
         stdin_data: Option<&[u8]>,
     ) -> anyhow::Result<Output> {
         let mut cmd = Command::new(program);
+        self.apply_env(&mut cmd);
         cmd.kill_on_drop(true);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -83,6 +105,7 @@ impl CommandRunner for RealCommandRunner {
         yes_response: &[u8],
     ) -> anyhow::Result<(ExitStatus, Vec<String>)> {
         let mut cmd = Command::new(program);
+        self.apply_env(&mut cmd);
         cmd.kill_on_drop(true);
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::null());
@@ -219,7 +242,7 @@ pub(crate) fn parse_output(
 /// `vdirsyncer sync` as subprocesses, parsing their output to apply incremental updates to the
 /// in-memory calendar store.
 pub struct VDirSyncer {
-    name: String,
+    col_id: String,
     folder_id: HashMap<String, String>,
     cfg: PathBuf,
     log: Arc<Mutex<File>>,
@@ -234,24 +257,24 @@ impl VDirSyncer {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         xdg: &BaseDirectories,
-        name: String,
+        col_id: String,
         folder_id: HashMap<String, String>,
         url: String,
         read_only: bool,
-        auth: Option<SyncerAuth>,
+        username: Option<String>,
         time_span: &SyncTimeSpan,
         log: Arc<Mutex<File>>,
     ) -> anyhow::Result<Self> {
         Self::new_with_runner(
             xdg,
-            name,
+            col_id,
             folder_id,
             url,
             read_only,
-            auth,
+            username,
             time_span,
             log,
-            Arc::new(RealCommandRunner),
+            Arc::new(RealCommandRunner::new(xdg)),
         )
         .await
     }
@@ -260,18 +283,18 @@ impl VDirSyncer {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn new_with_runner(
         xdg: &BaseDirectories,
-        name: String,
+        col_id: String,
         folder_id: HashMap<String, String>,
         url: String,
         read_only: bool,
-        auth: Option<SyncerAuth>,
+        username: Option<String>,
         time_span: &SyncTimeSpan,
         log: Arc<Mutex<File>>,
         runner: Arc<dyn CommandRunner>,
     ) -> anyhow::Result<Self> {
-        let cfg = Self::generate_config(xdg, &name, url, read_only, auth, time_span).await?;
+        let cfg = Self::generate_config(xdg, &col_id, url, read_only, username, time_span).await?;
         Ok(Self {
-            name,
+            col_id,
             folder_id,
             cfg,
             log,
@@ -285,18 +308,18 @@ impl VDirSyncer {
 
     async fn generate_config(
         xdg: &BaseDirectories,
-        name: &String,
+        col_id: &String,
         url: String,
         read_only: bool,
-        auth: Option<SyncerAuth>,
+        username: Option<String>,
         time_span: &SyncTimeSpan,
     ) -> anyhow::Result<PathBuf> {
         let dir = xdg.get_data_file("vdirsyncer").unwrap();
-        let status_path = dir.join(format!("{}-status", name));
-        let sync_path = dir.join(format!("{}-data", name));
-        let cfg_path = dir.join(format!("{}.cfg", name));
+        let status_path = dir.join(format!("{}-status", col_id));
+        let sync_path = dir.join(format!("{}-data", col_id));
+        let cfg_path = dir.join(format!("{}.cfg", col_id));
 
-        let name = Self::escape_value(name);
+        let col_id = Self::escape_value(col_id);
         let url = Self::escape_value(&url);
 
         let mut cfg = File::options()
@@ -310,11 +333,11 @@ impl VDirSyncer {
             .await?;
 
         // create the pair
-        cfg.write_all(format!("[pair {}]\n", name).as_bytes())
+        cfg.write_all(format!("[pair {}]\n", col_id).as_bytes())
             .await?;
-        cfg.write_all(format!("a = \"{}_local\"\n", name).as_bytes())
+        cfg.write_all(format!("a = \"{}_local\"\n", col_id).as_bytes())
             .await?;
-        cfg.write_all(format!("b = \"{}_remote\"\n", name).as_bytes())
+        cfg.write_all(format!("b = \"{}_remote\"\n", col_id).as_bytes())
             .await?;
         cfg.write_all(b"collections = [\"from a\", \"from b\"]\n")
             .await?;
@@ -324,7 +347,7 @@ impl VDirSyncer {
         cfg.write_all(b"implicit = \"create\"\n").await?;
 
         // local storage
-        cfg.write_all(format!("[storage {}_local]\n", name).as_bytes())
+        cfg.write_all(format!("[storage {}_local]\n", col_id).as_bytes())
             .await?;
         cfg.write_all(b"type = \"filesystem\"\n").await?;
         cfg.write_all(b"fileext = \".ics\"\n").await?;
@@ -332,7 +355,7 @@ impl VDirSyncer {
             .await?;
 
         // remote storage
-        cfg.write_all(format!("[storage {}_remote]\n", name).as_bytes())
+        cfg.write_all(format!("[storage {}_remote]\n", col_id).as_bytes())
             .await?;
         cfg.write_all(b"type = \"caldav\"\n").await?;
         cfg.write_all(format!("url = \"{}\"\n", url).as_bytes())
@@ -345,17 +368,17 @@ impl VDirSyncer {
             cfg.write_all(format!("end_date = \"{}\"\n", time_span.end_expr()).as_bytes())
                 .await?;
         }
-        if let Some(auth) = auth {
+        if let Some(username) = username {
+            cfg.write_all(format!("username = \"{}\"\n", Self::escape_value(&username)).as_bytes())
+                .await?;
             cfg.write_all(
-                format!("username = \"{}\"\n", Self::escape_value(&auth.user)).as_bytes(),
+                format!(
+                    "password.fetch = [\"command\", \"eventix-getpw\", \"{}\"]\n",
+                    col_id
+                )
+                .as_bytes(),
             )
             .await?;
-            cfg.write_all(b"password.fetch = [\"command\"").await?;
-            for comp in &auth.password {
-                cfg.write_all(format!(", \"{}\"", Self::escape_value(comp)).as_bytes())
-                    .await?;
-            }
-            cfg.write_all(b"]\n").await?;
         } else {
             cfg.write_all(b"username = \"\"\n").await?;
             cfg.write_all(b"password = \"\"\n").await?;
@@ -375,7 +398,7 @@ impl VDirSyncer {
             .join(" ");
         anyhow!(
             "collection '{}': command `{}` exited with {}",
-            &self.name,
+            &self.col_id,
             command,
             status
         )
@@ -386,7 +409,7 @@ impl VDirSyncer {
             "--config",
             self.cfg.to_str().unwrap(),
             "discover",
-            &self.name,
+            &self.col_id,
         ];
 
         let (status, lines) = self
@@ -395,7 +418,7 @@ impl VDirSyncer {
             .await?;
 
         for line in &lines {
-            log_line(&self.log, &self.name, line).await?;
+            log_line(&self.log, &self.col_id, line).await?;
         }
 
         if status.success() {
@@ -447,7 +470,7 @@ impl VDirSyncer {
         let output = self.runner.run("vdirsyncer", &args, None).await?;
         let stderr = String::from_utf8(output.stderr)?;
         for line in stderr.lines() {
-            log_line(&self.log, &self.name, line).await?;
+            log_line(&self.log, &self.col_id, line).await?;
         }
 
         if output.status.success() {
@@ -465,7 +488,7 @@ impl VDirSyncer {
         let output = self.runner.run("vdirsyncer", &args, None).await?;
         let stderr = String::from_utf8(output.stderr)?;
         for line in stderr.lines() {
-            log_line(&self.log, &self.name, line).await?;
+            log_line(&self.log, &self.col_id, line).await?;
         }
 
         if output.status.success() {
@@ -482,7 +505,9 @@ impl VDirSyncer {
     ) -> anyhow::Result<()> {
         let dir = self.cfg.parent().unwrap();
 
-        let status_path = dir.join(format!("{}-status", self.name)).join(&self.name);
+        let status_path = dir
+            .join(format!("{}-status", self.col_id))
+            .join(&self.col_id);
         for ext in [".items", ".metadata"] {
             let path = status_path.join(format!("{}{}", folder, ext));
             if path.exists() {
@@ -492,7 +517,7 @@ impl VDirSyncer {
             }
         }
 
-        let data_path = dir.join(format!("{}-data", self.name)).join(folder);
+        let data_path = dir.join(format!("{}-data", self.col_id)).join(folder);
         if let Ok(mut dir) = fs::read_dir(data_path).await {
             while let Some(entry) = dir.next_entry().await? {
                 if remove_meta
@@ -515,7 +540,7 @@ impl VDirSyncer {
 
         // Log every line now that we have the full stderr string.
         for line in stderr.lines() {
-            log_line(&self.log, &self.name, line).await?;
+            log_line(&self.log, &self.col_id, line).await?;
         }
 
         if matches!(result, SyncResult::NeedsDiscover) {
@@ -539,11 +564,11 @@ impl Syncer for VDirSyncer {
             "--config",
             self.cfg.to_str().unwrap(),
             "metasync",
-            &self.name,
+            &self.col_id,
         ];
         let output = self.runner.run("vdirsyncer", &args, None).await?;
         for line in String::from_utf8(output.stderr)?.lines() {
-            log_line(&self.log, &self.name, line).await?;
+            log_line(&self.log, &self.col_id, line).await?;
         }
 
         if !output.status.success() {
@@ -561,7 +586,7 @@ impl Syncer for VDirSyncer {
             return Ok(SyncColResult::Success(false));
         };
 
-        self.run_sync(vec![format!("{}/{}", self.name, folder)])
+        self.run_sync(vec![format!("{}/{}", self.col_id, folder)])
             .await
     }
 
@@ -569,7 +594,7 @@ impl Syncer for VDirSyncer {
         let names = self
             .folder_id
             .keys()
-            .map(|folder| format!("{}/{}", &self.name, folder))
+            .map(|folder| format!("{}/{}", &self.col_id, folder))
             .collect::<Vec<_>>();
         if names.is_empty() {
             return Ok(SyncColResult::Success(false));
@@ -588,13 +613,13 @@ impl Syncer for VDirSyncer {
     }
 
     async fn create_cal_by_folder(&mut self, folder: &String) -> anyhow::Result<()> {
-        self.run_create_sync(vec![format!("{}/{}", self.name, folder)])
+        self.run_create_sync(vec![format!("{}/{}", self.col_id, folder)])
             .await?;
         self.run_discover().await
     }
 
     async fn delete_cal_by_folder(&mut self, folder: &String) -> anyhow::Result<()> {
-        self.run_delete_sync(vec![format!("{}/{}", self.name, folder)])
+        self.run_delete_sync(vec![format!("{}/{}", self.col_id, folder)])
             .await?;
         self.remove_local_folder_data(folder, false).await
     }
@@ -604,7 +629,7 @@ impl Syncer for VDirSyncer {
 
         // remove complete status and directory
         for suffix in ["status", "data"] {
-            let path = dir.join(format!("{}-{}", self.name, suffix));
+            let path = dir.join(format!("{}-{}", self.col_id, suffix));
             if path.exists() {
                 fs::remove_dir_all(&path)
                     .await
@@ -969,22 +994,13 @@ mod tests {
             .unwrap();
         let log = Arc::new(Mutex::new(log_file));
 
-        let auth = SyncerAuth {
-            user: "user@example.com".to_string(),
-            password: vec![
-                String::from("sh"),
-                String::from("-c"),
-                String::from("echo pass"),
-            ],
-        };
-
         let syncer = VDirSyncer::new_with_runner(
             &xdg,
             "cmdcol".to_string(),
             HashMap::new(),
             "http://localhost/".to_string(),
             false,
-            Some(auth),
+            Some("user@example.com".to_string()),
             &crate::settings::SyncTimeSpan::default(),
             log,
             FakeCommandRunner::new(vec![], vec![]),
@@ -994,8 +1010,6 @@ mod tests {
 
         let content = tokio::fs::read_to_string(&syncer.cfg).await.unwrap();
         assert!(content.contains("username = \"user@example.com\""));
-        assert!(content.contains("password.fetch = [\"command\", \"sh\", \"-c\", \"echo pass\"]"));
-        assert!(!content.contains("\npassword = "));
     }
 
     #[tokio::test]

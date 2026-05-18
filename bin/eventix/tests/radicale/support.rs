@@ -11,7 +11,10 @@ use std::time::Duration;
 use anyhow::Context;
 use axum::http::StatusCode;
 use eventix_ical::objects::EventLike;
-use eventix_state::{CollectionSettings, EmailAccount, EventixState, PasswordSource, SyncerType};
+use eventix_state::{
+    CollectionSettings, EmailAccount, EventixState, SyncerType, encrypt_password,
+    retrieve_portal_secret,
+};
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -174,14 +177,6 @@ impl Drop for RadicaleServer {
     }
 }
 
-pub fn password_cmd() -> Option<Vec<String>> {
-    Some(vec![
-        "sh".to_string(),
-        "-c".to_string(),
-        format!("printf %s {PASSWORD}"),
-    ])
-}
-
 pub struct RadicalePeer {
     state: EventixState,
     tmp: TempDir,
@@ -330,6 +325,7 @@ impl RadicalePeer {
         self.tmp
             .path()
             .join("data")
+            .join(eventix::APP_ID)
             .join("vdirsyncer")
             .join(format!("{COL_ID}-data"))
             .join(folder)
@@ -380,10 +376,10 @@ impl RadicalePair {
         // Start two isolated Eventix peers against the same Radicale backend so tests can model
         // one side producing remote changes and the other side consuming them.
         let (consumer_state, consumer_tmp) = crate::helper::make_state_from_col(
-            Self::make_collection(server.url(), consumer_read_only),
+            Self::make_collection(server.url(), consumer_read_only).await,
         );
         let (producer_state, producer_tmp) = crate::helper::make_state_from_col(
-            Self::make_collection(server.url(), producer_read_only),
+            Self::make_collection(server.url(), producer_read_only).await,
         );
 
         Self {
@@ -393,13 +389,16 @@ impl RadicalePair {
         }
     }
 
-    fn make_collection(server_url: &str, read_only: bool) -> CollectionSettings {
+    async fn make_collection(server_url: &str, read_only: bool) -> CollectionSettings {
+        let secret = retrieve_portal_secret().await.unwrap();
+        let pw = encrypt_password(&secret, PASSWORD).unwrap();
+
         CollectionSettings::new(SyncerType::VDirSyncer {
             email: EmailAccount::new("Test User".to_string(), "test@example.com".to_string()),
             url: server_url.to_string(),
             read_only,
             username: Some(USERNAME.to_string()),
-            password_source: password_cmd().map(|command| PasswordSource::Command { command }),
+            password: Some(pw),
             time_span: Default::default(),
         })
     }
@@ -412,9 +411,10 @@ impl RadicalePair {
         &self.producer
     }
 
-    pub fn spawn_peer(&self) -> RadicalePeer {
-        let (state, tmp) =
-            crate::helper::make_state_from_col(Self::make_collection(self._server.url(), false));
+    pub async fn spawn_peer(&self) -> RadicalePeer {
+        let (state, tmp) = crate::helper::make_state_from_col(
+            Self::make_collection(self._server.url(), false).await,
+        );
         RadicalePeer::new(state, tmp)
     }
 }
