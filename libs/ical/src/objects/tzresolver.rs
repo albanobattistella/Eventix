@@ -83,15 +83,34 @@ impl CalendarTimeZoneResolver {
         match dt {
             CalDateTime::Utc(dt) => dt.fixed_offset().into(),
             CalDateTime::Floating(local) => fixed_from_fallback(fallback, *local),
-            CalDateTime::Timezone(local, tzid) => self.resolve_local_or_earlier(tzid, *local),
+            CalDateTime::Timezone(local, tzid) => self.resolve_local_or_pre_gap(tzid, *local),
         }
     }
 
-    fn resolve_local_or_earlier(&self, tzid: &str, local: NaiveDateTime) -> ResolvedDateTime {
+    fn resolve_local_or_pre_gap(&self, tzid: &str, local: NaiveDateTime) -> ResolvedDateTime {
         match self.resolve_local(tzid, local) {
             MappedLocalTime::Single(dt) => dt,
             MappedLocalTime::Ambiguous(early, _) => early,
-            MappedLocalTime::None => panic!("non-existent local time {local} in {tzid}"),
+            MappedLocalTime::None => self
+                .offset_before_gap(tzid, local)
+                .map(|offset| fixed_datetime(local, offset).into())
+                .unwrap_or_else(|| panic!("non-existent local time {local} in {tzid}")),
+        }
+    }
+
+    /// Non-panicking variant used by runtime recurrence expansion. Returns `None` for DST gaps
+    /// (non-existent local times) instead of panicking. Ambiguous times still resolve to the
+    /// earlier instance (RFC semantics for both DTSTART and recurrence expansion keep the first
+    /// occurrence).
+    fn resolve_local_or_earlier_opt(
+        &self,
+        tzid: &str,
+        local: NaiveDateTime,
+    ) -> Option<ResolvedDateTime> {
+        match self.resolve_local(tzid, local) {
+            MappedLocalTime::Single(dt) => Some(dt),
+            MappedLocalTime::Ambiguous(early, _) => Some(early),
+            MappedLocalTime::None => None,
         }
     }
 
@@ -106,6 +125,19 @@ impl CalendarTimeZoneResolver {
 
         // fall back to UTC as a last resort
         map_system_time(Tz::UTC, local)
+    }
+
+    fn offset_before_gap(&self, tzid: &str, local: NaiveDateTime) -> Option<FixedOffset> {
+        let mut probe = local;
+        for _ in 0..(48 * 60) {
+            probe -= Duration::minutes(1);
+            match self.resolve_local(tzid, probe) {
+                MappedLocalTime::Single(dt) => return Some(*dt.offset()),
+                MappedLocalTime::Ambiguous(early, _) => return Some(*early.offset()),
+                MappedLocalTime::None => {}
+            }
+        }
+        None
     }
 
     /// Validates that the given calendar datetime is representable in both its declared timezone
@@ -188,11 +220,11 @@ impl CalendarTimeZoneResolver {
         pseudo: DateTime<Utc>,
         tzid: Option<&str>,
         fallback: &Tz,
-    ) -> ResolvedDateTime {
+    ) -> Option<ResolvedDateTime> {
         let local = pseudo.naive_utc();
         match tzid {
-            Some(tzid) => self.resolve_local_or_earlier(tzid, local),
-            None => fixed_from_fallback(fallback, local),
+            Some(tzid) => self.resolve_local_or_earlier_opt(tzid, local),
+            None => fixed_from_fallback_opt(fallback, local),
         }
     }
 
@@ -239,10 +271,14 @@ fn validate_system_time(tz: &Tz, local: NaiveDateTime) -> Result<(), ParseError>
 }
 
 fn fixed_from_fallback(tz: &Tz, local: NaiveDateTime) -> ResolvedDateTime {
+    fixed_from_fallback_opt(tz, local).expect("non-existent local time {local} in {tz}")
+}
+
+fn fixed_from_fallback_opt(tz: &Tz, local: NaiveDateTime) -> Option<ResolvedDateTime> {
     match tz.from_local_datetime(&local) {
-        MappedLocalTime::Single(dt) => dt.fixed_offset().into(),
-        MappedLocalTime::Ambiguous(early, _) => early.fixed_offset().into(),
-        MappedLocalTime::None => panic!("non-existent local time {local} in {tz}"),
+        MappedLocalTime::Single(dt) => Some(dt.fixed_offset().into()),
+        MappedLocalTime::Ambiguous(early, _) => Some(early.fixed_offset().into()),
+        MappedLocalTime::None => None,
     }
 }
 
@@ -570,6 +606,7 @@ fn resolve_month_weekday(year: i32, month: u32, desc: &CalWDayDesc) -> Vec<Naive
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, NaiveTime};
+    use chrono_tz::Tz;
 
     use super::*;
 
@@ -598,6 +635,46 @@ mod tests {
                     .unwrap()
                     .and_time(dtstart.time()),
             ]
+        );
+    }
+
+    #[test]
+    fn resolve_date_start_uses_pre_gap_offset_for_nonexistent_tzid_time() {
+        let resolver = CalendarTimeZoneResolver::default();
+        let date = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 3, 29)
+                .unwrap()
+                .and_hms_opt(2, 30, 0)
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+
+        let resolved = resolver.resolve_date_start(&date, &Tz::UTC);
+
+        assert_eq!(resolved.to_rfc3339(), "2026-03-29T02:30:00+01:00");
+        assert_eq!(
+            resolved.with_timezone(&Utc).to_rfc3339(),
+            "2026-03-29T01:30:00+00:00"
+        );
+    }
+
+    #[test]
+    fn resolve_date_start_keeps_first_occurrence_for_ambiguous_tzid_time() {
+        let resolver = CalendarTimeZoneResolver::default();
+        let date = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2025, 10, 26)
+                .unwrap()
+                .and_hms_opt(2, 30, 0)
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+
+        let resolved = resolver.resolve_date_start(&date, &Tz::UTC);
+
+        assert_eq!(resolved.to_rfc3339(), "2025-10-26T02:30:00+02:00");
+        assert_eq!(
+            resolved.with_timezone(&Utc).to_rfc3339(),
+            "2025-10-26T00:30:00+00:00"
         );
     }
 }

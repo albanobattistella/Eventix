@@ -604,10 +604,19 @@ impl Iterator for CompDateIterator<'_, '_> {
                 resolver,
                 tzid,
                 fallback,
-            } => recur.next().map(|date| {
-                let date = resolver.resolve_pseudo_local(date, tzid.as_deref(), fallback);
-                (CompDateType::Start, date, exdates.contains(&date))
-            }),
+            } => {
+                // We may encounter recurrence candidates that fall into DST gaps. Use the
+                // non-panicking resolver variant and skip such candidates.
+                loop {
+                    let date = recur.next()?;
+                    if let Some(resolved) =
+                        resolver.resolve_pseudo_local(date, tzid.as_deref(), fallback)
+                    {
+                        return Some((CompDateType::Start, resolved, exdates.contains(&resolved)));
+                    }
+                    // otherwise skip and continue loop
+                }
+            }
             Self::Single(single) => single.take().map(|(ty, date)| (ty, date, false)),
         }
     }
