@@ -50,11 +50,9 @@ async fn copy_timed_event_to_new_date() {
         .collect();
     assert_eq!(entries.len(), 1, "expected exactly 1 copy ICS file");
 
-    let tz = chrono_tz::UTC;
     let copy_ics = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         entries[0].clone(),
-        &tz,
     )
     .unwrap();
     let comp = first_component(&copy_ics);
@@ -103,11 +101,9 @@ async fn copy_with_hour_override() {
         .collect();
     assert_eq!(entries.len(), 1);
 
-    let tz = chrono_tz::UTC;
     let copy_ics = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         entries[0].clone(),
-        &tz,
     )
     .unwrap();
     let comp = first_component(&copy_ics);
@@ -151,11 +147,9 @@ async fn copy_allows_event_in_different_timezone() {
         .collect();
     assert_eq!(entries.len(), 1);
 
-    let tz = chrono_tz::UTC;
     let copy_ics = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         entries[0].clone(),
-        &tz,
     )
     .unwrap();
     let comp = first_component(&copy_ics);
@@ -185,96 +179,6 @@ async fn copy_allows_event_in_different_timezone() {
         .date(comp.start().unwrap())
         .start_in(&berlin);
     assert_eq!(localized.hour(), 14);
-}
-
-/// Copying an event that uses an embedded custom `VTIMEZONE` still fails when the requested
-/// user-local time falls into the local DST gap.
-#[tokio::test]
-async fn copy_rejects_embedded_vtimezone_in_user_local_dst_gap() {
-    let tmp = TempDir::new().unwrap();
-    let cal_dir = tmp.path().join(CAL_ID);
-    std::fs::create_dir_all(&cal_dir).unwrap();
-    let uid = "copy-custom-dst";
-    std::fs::write(
-        cal_dir.join(format!("{uid}.ics")),
-        format!(
-            "BEGIN:VCALENDAR\r\n\
-             BEGIN:VTIMEZONE\r\n\
-             TZID:X-CUSTOM-DST\r\n\
-             BEGIN:STANDARD\r\n\
-             DTSTART:19700101T000000\r\n\
-             TZOFFSETFROM:+0200\r\n\
-             TZOFFSETTO:+0100\r\n\
-             TZNAME:CST\r\n\
-             END:STANDARD\r\n\
-             BEGIN:DAYLIGHT\r\n\
-             DTSTART:20250330T040000\r\n\
-             TZOFFSETFROM:+0100\r\n\
-             TZOFFSETTO:+0200\r\n\
-             TZNAME:CDT\r\n\
-             END:DAYLIGHT\r\n\
-             END:VTIMEZONE\r\n\
-             BEGIN:VEVENT\r\n\
-             UID:{uid}\r\n\
-             DTSTAMP:20250101T000000Z\r\n\
-             DTSTART;TZID=X-CUSTOM-DST:20250329T090000\r\n\
-             DTEND;TZID=X-CUSTOM-DST:20250329T100000\r\n\
-             SUMMARY:Custom DST copy\r\n\
-             END:VEVENT\r\n\
-             END:VCALENDAR\r\n"
-        ),
-    )
-    .unwrap();
-
-    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
-    let router = make_router(state);
-
-    let qs = encode_form(&[("uid", uid), ("date", "2025-03-30"), ("hour", "2")]);
-    let (status, _) = post_query(router, &format!("/api/items/copy?{qs}")).await;
-    assert_eq!(status.as_u16(), 100);
-
-    let count = std::fs::read_dir(&cal_dir)
-        .unwrap()
-        .filter(|e| {
-            e.as_ref()
-                .unwrap()
-                .path()
-                .extension()
-                .and_then(|s| s.to_str())
-                == Some("ics")
-        })
-        .count();
-    assert_eq!(count, 1);
-}
-
-/// Copying to a user-local time that falls into a DST gap fails because the copied item would not
-/// be representable in the user's calendar view.
-#[tokio::test]
-async fn copy_rejects_user_local_dst_gap() {
-    let tmp = TempDir::new().unwrap();
-    let cal_dir = tmp.path().join(CAL_ID);
-    std::fs::create_dir_all(&cal_dir).unwrap();
-    let uid = "copy-dst-gap";
-    write_event_ics_in_tz(&cal_dir, uid, "NY meeting", "America/New_York", 9, 10);
-    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
-    let router = make_router(state);
-
-    let qs = encode_form(&[("uid", uid), ("date", "2026-03-29"), ("hour", "2")]);
-    let (status, _) = post_query(router, &format!("/api/items/copy?{qs}")).await;
-    assert_eq!(status.as_u16(), 100);
-
-    let count = std::fs::read_dir(&cal_dir)
-        .unwrap()
-        .filter(|e| {
-            e.as_ref()
-                .unwrap()
-                .path()
-                .extension()
-                .and_then(|s| s.to_str())
-                == Some("ics")
-        })
-        .count();
-    assert_eq!(count, 1);
 }
 
 /// Attempting to copy a recurrent event returns an error.
@@ -368,11 +272,9 @@ async fn copy_allday_event_to_new_date() {
         .collect();
     assert_eq!(entries.len(), 1, "expected exactly 1 copy ICS file");
 
-    let tz = chrono_tz::UTC;
     let copy_ics = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         entries[0].clone(),
-        &tz,
     )
     .unwrap();
     let comp = first_component(&copy_ics);

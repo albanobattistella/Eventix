@@ -100,10 +100,8 @@ async fn run_shift(
     };
 
     let complete = |start: CalDate, end: CalDate, c: &mut CalComponent| -> anyhow::Result<()> {
-        let local_tz = locale.timezone();
-        c.set_start_checked(Some(start), &ctx, local_tz)?;
-        c.set_end_checked(Some(end), &ctx, local_tz)?;
-
+        c.set_start(Some(start));
+        c.as_event_mut().unwrap().set_end(Some(end));
         c.touch();
         Ok(())
     };

@@ -3,10 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use eventix_ical::objects::{
-    CalCompType, CalComponent, CalDate, CalOrganizer, CalTodoStatus, DateContext, EventLike,
-    PRIORITY_MEDIUM, UpdatableEventLike,
+    CalCompType, CalComponent, CalDate, CalOrganizer, CalTodoStatus, EventLike, PRIORITY_MEDIUM,
+    UpdatableEventLike,
 };
-use eventix_ical::parser::{ParseError, ParseErrorType};
 use eventix_locale::Locale;
 use eventix_state::{CalendarAlarmType, PersonalAlarms};
 use std::sync::Arc;
@@ -17,14 +16,6 @@ use crate::comps::{
     todostatus::TodoStatus,
 };
 use crate::pages::Page;
-
-/// Maps a DST-related [`ParseError`] to the appropriate localized error message.
-fn dst_error_msg<'a>(locale: &'a (dyn Locale + Send + Sync), err: &ParseError) -> &'a str {
-    match err.ty() {
-        &ParseErrorType::AmbiguousTime(_) => locale.translate("error.dst_ambiguous"),
-        _ => locale.translate("error.dst_nonexistent"),
-    }
-}
 
 pub trait CompAction {
     fn calendar(&self) -> Option<&String> {
@@ -69,21 +60,6 @@ pub trait CompAction {
             }
         }
 
-        // validate start/end before using it afterwards (e.g. testing start > end)
-        let local_tz = locale.timezone();
-        if let Some(ref d) = start
-            && let Err(e) = DateContext::system().validate_date(d, local_tz)
-        {
-            page.add_error(dst_error_msg(locale.as_ref(), &e));
-            return false;
-        }
-        if let Some(ref d) = end
-            && let Err(e) = DateContext::system().validate_date(d, local_tz)
-        {
-            page.add_error(dst_error_msg(locale.as_ref(), &e));
-            return false;
-        }
-
         if start.is_some()
             && end.is_some()
             && matches!(start.as_ref().unwrap(), CalDate::Date(..))
@@ -95,23 +71,6 @@ pub trait CompAction {
 
         if start.is_some() && end.is_some() && start.as_ref().unwrap() > end.as_ref().unwrap() {
             page.add_error(locale.translate("error.end_before_start"));
-            return false;
-        }
-
-        if let Some(st) = self.status()
-            && let Some(completed) = st
-                .completed()
-                .and_then(|d| d.to_caldate(ctype.into(), false))
-            && let Err(e) = DateContext::system().validate_date(&completed, local_tz)
-        {
-            page.add_error(dst_error_msg(locale.as_ref(), &e));
-            return false;
-        }
-
-        if let Some(rr) = self.rrule()
-            && let Err(e) = rr.check_dst(local_tz)
-        {
-            page.add_error(dst_error_msg(locale.as_ref(), &e));
             return false;
         }
 
@@ -139,22 +98,20 @@ pub trait CompAction {
         comp: &mut CalComponent,
         personal_alarms: &mut PersonalAlarms,
         organizer: Option<CalOrganizer>,
-        ctx: &DateContext,
         locale: &Arc<dyn Locale + Send + Sync>,
     ) -> anyhow::Result<()> {
         let dtype = comp.ctype().into();
         let event_tz = self.start_end().effective_timezone(locale);
-        let local_tz = locale.timezone();
         let (start, end) = self.start_end().as_caldates(locale, dtype);
 
         comp.set_summary(Self::nonempty_or_none(self.summary().clone()));
         comp.set_location(Self::nonempty_or_none(self.location().clone()));
         comp.set_description(Self::nonempty_or_none(self.description().clone()));
-        comp.set_start_checked(start, ctx, local_tz)?;
-        if comp.as_event().is_some() {
-            comp.set_end_checked(end, ctx, local_tz)?;
-        } else {
-            comp.set_due_checked(end, ctx, local_tz)?;
+        comp.set_start(start);
+        if let Some(ev) = comp.as_event_mut() {
+            ev.set_end(end);
+        } else if let Some(td) = comp.as_todo_mut() {
+            td.set_due(end);
         }
 
         let (cal_alarms, pers_alarms) = self.alarm().to_alarms(locale, &event_tz).unwrap();

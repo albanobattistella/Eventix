@@ -1237,6 +1237,7 @@ async fn timed_event_utc() {
         other => panic!("expected UTC DTEND, got {:?}", other),
     }
 }
+
 /// The handler must reject the event with an error.
 #[tokio::test]
 async fn timed_event_end_in_dst_fold() {

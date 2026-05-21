@@ -33,8 +33,7 @@ pub fn read_created_ics(cal_dir: &Path) -> CalFile {
         entries
     );
 
-    let tz = chrono_tz::UTC;
-    CalFile::new_from_file(Arc::new(CAL_ID.to_string()), entries[0].clone(), &tz).unwrap()
+    CalFile::new_from_file(Arc::new(CAL_ID.to_string()), entries[0].clone()).unwrap()
 }
 
 /// Asserts that the HTML response body contains a success info banner and no error banner.

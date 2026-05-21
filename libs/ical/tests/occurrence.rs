@@ -8,7 +8,7 @@
 //! most naturally reached through a full parse-and-iterate round-trip.
 
 use chrono::TimeZone;
-use chrono_tz::{Tz, UTC};
+use chrono_tz::UTC;
 
 use eventix_ical::col::{CalFile, Occurrence};
 use eventix_ical::objects::{CalEventStatus, CalTodoStatus};
@@ -35,7 +35,7 @@ fn first_occurrence(file: &CalFile) -> Occurrence<'_> {
 #[test]
 fn todo_cancelled_and_properties_via_occurrence() {
     let path = data_dir().join("todo_with_status.ics");
-    let file = CalFile::new_from_file(make_id("cal"), path, &Tz::UTC).unwrap();
+    let file = CalFile::new_from_file(make_id("cal"), path).unwrap();
 
     let occ = first_occurrence(&file);
 
@@ -50,7 +50,7 @@ fn todo_cancelled_and_properties_via_occurrence() {
 #[test]
 fn event_cancelled_via_occurrence() {
     let path = data_dir().join("event_cancelled.ics");
-    let file = CalFile::new_from_file(make_id("cal"), path, &Tz::UTC).unwrap();
+    let file = CalFile::new_from_file(make_id("cal"), path).unwrap();
 
     let occ = first_occurrence(&file);
 
@@ -78,13 +78,11 @@ fn recurring_gap_instance_is_skipped_during_occurrence_expansion() {
     )
     .unwrap();
 
-    let file = CalFile::new_from_file(make_id("cal"), path, &Tz::UTC).unwrap();
+    let file = CalFile::new_from_file(make_id("cal"), path).unwrap();
     let occurrences = file
-        .occurrences_between(
-            utc(2026, 3, 27, 0, 0, 0),
-            utc(2026, 4, 2, 0, 0, 0),
-            |_| true,
-        )
+        .occurrences_between(utc(2026, 3, 27, 0, 0, 0), utc(2026, 4, 2, 0, 0, 0), |_| {
+            true
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(occurrences.len(), 2);
@@ -126,7 +124,7 @@ fn recurring_fold_instance_uses_first_occurrence_during_expansion() {
     )
     .unwrap();
 
-    let file = CalFile::new_from_file(make_id("cal"), path, &Tz::UTC).unwrap();
+    let file = CalFile::new_from_file(make_id("cal"), path).unwrap();
     let occurrences = file
         .occurrences_between(
             utc(2025, 10, 24, 0, 0, 0),

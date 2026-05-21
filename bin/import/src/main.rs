@@ -127,15 +127,10 @@ fn main() {
         .collect();
 
     // parse items from ICS file
-    let mut ics = match parse_ics_file(&args.file) {
+    let ics = match parse_ics_file(&args.file) {
         Err(err) => error_and_exit(format_error("Unable to parse file.", &err)),
         Ok(ics) => ics,
     };
-    if !ics.validate_times(state.timezone()) {
-        error_and_exit(
-            "The ICS file contains dates that are not representable in the local timezone.",
-        );
-    }
 
     let items = ics
         .components()

@@ -628,11 +628,9 @@ async fn following_edit_splits_series() {
         })
         .next()
         .expect("expected a second ICS file for the new series");
-    let new_tz = chrono_tz::UTC;
     let new_cal = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         new_ics_path,
-        &new_tz,
     )
     .unwrap();
     let new_comp = first_component(&new_cal);
@@ -738,7 +736,6 @@ async fn following_edit_empty_original_deletes_file() {
     let new_cal = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         remaining[0].clone(),
-        &chrono_tz::UTC,
     )
     .unwrap();
     let new_comp = first_component(&new_cal);

@@ -145,12 +145,10 @@ impl State {
         };
 
         let mut store = CalStore::default();
-        let local_tz = locale.timezone();
         for (col_id, col) in settings.collections().iter() {
             let col_read_only = col.is_read_only();
             for (cal_id, cal) in col.calendars() {
-                let dir =
-                    Self::load_calendar(&xdg, col_id, col, cal_id, cal, col_read_only, local_tz)?;
+                let dir = Self::load_calendar(&xdg, col_id, col, cal_id, cal, col_read_only)?;
                 store.add(dir);
             }
         }
@@ -211,10 +209,8 @@ impl State {
             store,
             settings,
             xdg,
-            locale,
             ..
         } = &mut *state;
-        let local_tz = locale.timezone();
 
         // detect added/updated calendars
         for (col_id, col) in settings.collections().iter() {
@@ -228,15 +224,7 @@ impl State {
                         Err(err) => return Err(err.into()),
                     }
                 } else {
-                    let dir = Self::load_calendar(
-                        xdg,
-                        col_id,
-                        col,
-                        &cal_id,
-                        cal,
-                        col_read_only,
-                        local_tz,
-                    )?;
+                    let dir = Self::load_calendar(xdg, col_id, col, &cal_id, cal, col_read_only)?;
                     store.add(dir);
                 }
             }
@@ -255,26 +243,19 @@ impl State {
         cal_id: &str,
         cal: &CalendarSettings,
         read_only: bool,
-        local_tz: &Tz,
     ) -> anyhow::Result<CalDir> {
         let cal_id: Arc<String> = Arc::from(cal_id.to_owned());
         let col_path = col.path(xdg, col_id);
         let path = col_path.join(cal.folder());
         let mut dir = if path.exists() {
-            CalDir::new_from_dir(
-                cal_id.clone(),
-                path.clone(),
-                cal.name().clone(),
-                read_only,
-                local_tz,
-            )
-            .with_context(|| {
-                format!(
-                    "Loading calendar {} from '{}' failed",
-                    cal_id,
-                    path.to_str().unwrap()
-                )
-            })?
+            CalDir::new_from_dir(cal_id.clone(), path.clone(), cal.name().clone(), read_only)
+                .with_context(|| {
+                    format!(
+                        "Loading calendar {} from '{}' failed",
+                        cal_id,
+                        path.to_str().unwrap()
+                    )
+                })?
         } else {
             tracing::warn!(
                 "Creating empty calendar '{}' from non-existing directory {}",

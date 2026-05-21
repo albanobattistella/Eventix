@@ -10,10 +10,9 @@ use std::sync::Arc;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use eventix_ical::col::CalDir;
 
-use crate::common::{CAL_ID, FIXTURE_COUNT, benchmark_local_tz, build_calendar_dir};
+use crate::common::{CAL_ID, FIXTURE_COUNT, build_calendar_dir};
 
 fn benchmark_parse(c: &mut Criterion) {
-    let local_tz = benchmark_local_tz();
     let (_tmp, cal_dir) = build_calendar_dir();
 
     let mut group = c.benchmark_group("ics/parse_directory");
@@ -25,7 +24,6 @@ fn benchmark_parse(c: &mut Criterion) {
                 cal_dir.clone(),
                 "Benchmark Calendar".to_string(),
                 false,
-                &local_tz,
             )
             .expect("parse generated benchmark calendar dir");
             black_box(parsed);

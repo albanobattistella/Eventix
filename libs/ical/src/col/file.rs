@@ -224,10 +224,8 @@ impl CalFile {
     /// Creates a new [`CalFile`] for given directory by reading it from given path.
     ///
     /// Note that this method assumes that all calendar components in this file have the same UID.
-    /// After parsing, all component dates are validated against `local_tz`. Components with times
-    /// falling in a DST gap (non-existent) or DST fold (ambiguous) are removed with a warning.
-    pub fn new_from_file(dir: Arc<String>, path: PathBuf, local_tz: &Tz) -> Result<Self, ColError> {
-        let cal = Self::read_calendar(&path, local_tz)?;
+    pub fn new_from_file(dir: Arc<String>, path: PathBuf) -> Result<Self, ColError> {
+        let cal = Self::read_calendar(&path)?;
         Ok(Self::new(dir, path, cal))
     }
 
@@ -239,16 +237,12 @@ impl CalFile {
     /// directory and may contain components with different UIDs in the same file. For that reason,
     /// potentially multiple [`CalFile`] instances are created and one file per UID is created in
     /// the given directory path `dir_path`.
-    ///
-    /// After parsing, all component dates are validated against `local_tz`. Components with times
-    /// falling in a DST gap (non-existent) or DST fold (ambiguous) are removed with a warning.
     pub fn new_from_external_file(
         dir: Arc<String>,
         dir_path: PathBuf,
         path: PathBuf,
-        local_tz: &Tz,
     ) -> Result<Vec<CalFile>, ColError> {
-        let cal = Self::read_calendar(&path, local_tz)?;
+        let cal = Self::read_calendar(&path)?;
         let cals = cal.split_by_uid();
         Ok(cals
             .into_iter()
@@ -709,10 +703,6 @@ impl CalFile {
     /// DTSTARTs are intentionally left untouched so that any custom time a user placed an
     /// individual occurrence at is preserved in absolute terms.
     ///
-    /// All new dates are validated against `local_tz` before any mutation takes place. If any
-    /// date lands in a DST gap or DST fold the method returns `Err(ColError::Validation(...))`
-    /// and the file is left unchanged.
-    ///
     /// Returns `Err(ColError::ComponentNotFound)` if no base component with `uid` exists.
     ///
     /// Note that this does not save to file. Please call [`Self::save`] to do so. Note also that
@@ -723,7 +713,6 @@ impl CalFile {
         uid: &str,
         new_start: CalDate,
         new_end_or_due: Option<CalDate>,
-        local_tz: &Tz,
     ) -> Result<(), ColError> {
         // extract old start
         let old_start = self
@@ -733,12 +722,7 @@ impl CalFile {
             .and_then(|c| c.start().cloned())
             .ok_or_else(|| ColError::ComponentNotFound(uid.to_string()))?;
 
-        // Validate the new base dates before touching anything.
         let ctx = self.cal.date_context();
-        ctx.validate_date(&new_start, local_tz)?;
-        if let Some(ref e) = new_end_or_due {
-            ctx.validate_date(e, local_tz)?;
-        }
 
         // Compute the UTC delta between old and new DTSTART.
         let delta: Duration = ctx.date(&new_start).resolved_start(&chrono_tz::UTC)
@@ -772,12 +756,10 @@ impl CalFile {
                 // date by `delta`. This handles all-day ↔ timed conversions as well as
                 // same-type shifts.
                 let new_rid = Self::convert_rid(rid, delta, &new_start);
-                ctx.validate_date(&new_rid, local_tz)?;
 
                 // Shift DTSTART only when it currently matches the RID (no custom time set).
                 let (new_ow_start, new_ow_end) = if c.start() == Some(rid) {
                     let shifted_start = Self::convert_rid(rid, delta, &new_start);
-                    ctx.validate_date(&shifted_start, local_tz)?;
                     let shifted_end = c.end_or_due().map(|e| {
                         Self::convert_rid(e, delta, new_end_or_due.as_ref().unwrap_or(&new_start))
                     });
@@ -807,12 +789,8 @@ impl CalFile {
                 comp.set_start(Some(s));
             }
             match (comp.ctype(), upd.new_end) {
-                (CalCompType::Event, Some(e)) => {
-                    comp.set_end_checked(Some(e), &ctx, local_tz).unwrap()
-                }
-                (CalCompType::Todo, Some(d)) => {
-                    comp.set_due_checked(Some(d), &ctx, local_tz).unwrap()
-                }
+                (CalCompType::Event, Some(e)) => comp.as_event_mut().unwrap().set_end(Some(e)),
+                (CalCompType::Todo, Some(d)) => comp.as_todo_mut().unwrap().set_due(Some(d)),
                 _ => {}
             }
             comp.touch_with(now.clone());
@@ -827,15 +805,10 @@ impl CalFile {
             .unwrap(); // we already confirmed it exists above
 
         // we validated the dates above and have already changed the state
-        base.set_start_checked(Some(new_start), &ctx, local_tz)
-            .unwrap();
+        base.set_start(Some(new_start));
         match (base.ctype(), new_end_or_due) {
-            (CalCompType::Event, Some(end)) => {
-                base.set_end_checked(Some(end), &ctx, local_tz).unwrap()
-            }
-            (CalCompType::Todo, Some(due)) => {
-                base.set_due_checked(Some(due), &ctx, local_tz).unwrap()
-            }
+            (CalCompType::Event, Some(end)) => base.as_event_mut().unwrap().set_end(Some(end)),
+            (CalCompType::Todo, Some(due)) => base.as_todo_mut().unwrap().set_due(Some(due)),
             _ => {}
         }
         Ok(())
@@ -899,27 +872,23 @@ impl CalFile {
         }
     }
 
-    ///
-    /// After parsing, all component dates are validated against `local_tz`. Components with times
-    /// falling in a DST gap (non-existent) or DST fold (ambiguous) are removed with a warning.
-    pub fn reload_calendar(&mut self, local_tz: &Tz) -> Result<(), ColError> {
-        let cal = Self::read_calendar(&self.path, local_tz)?;
+    /// Reloads this calendar from disk.
+    pub fn reload_calendar(&mut self) -> Result<(), ColError> {
+        let cal = Self::read_calendar(&self.path)?;
         self.cal = cal;
         Ok(())
     }
 
-    fn read_calendar(path: &Path, local_tz: &Tz) -> Result<Calendar, ColError> {
+    fn read_calendar(path: &Path) -> Result<Calendar, ColError> {
         let mut input = String::new();
         File::open(path)
             .map_err(|e| ColError::FileOpen(path.to_path_buf(), e))?
             .read_to_string(&mut input)
             .map_err(|e| ColError::FileRead(path.to_path_buf(), e))?;
 
-        let mut cal = input
+        input
             .parse::<Calendar>()
-            .map_err(|e| ColError::FileParse(path.to_path_buf(), e))?;
-        cal.validate_times(local_tz);
-        Ok(cal)
+            .map_err(|e| ColError::FileParse(path.to_path_buf(), e))
     }
 
     /// Saves the current state to file.
@@ -2296,21 +2265,19 @@ END:VCALENDAR";
     #[test]
     fn change_start_uid_not_found() {
         // change_start must return ComponentNotFound when no base component with that uid exists.
-        let tz = &chrono_tz::Europe::Berlin;
         let new_start = CalDate::Date(
             NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
             CalCompType::Event.into(),
         );
         let mut file = CalFile::new_simple(Calendar::default());
 
-        let result = file.change_start("no-such-uid", new_start, None, tz);
+        let result = file.change_start("no-such-uid", new_start, None);
         assert!(matches!(result, Err(ColError::ComponentNotFound(_))));
     }
 
     #[test]
     fn change_start_non_recurrent() {
         // A simple (non-recurring) event: base start and end are updated, nothing else changes.
-        let tz = &chrono_tz::Europe::Berlin;
         let old_start = NaiveDate::from_ymd_opt(2024, 6, 10).unwrap();
         let old_end = NaiveDate::from_ymd_opt(2024, 6, 11).unwrap();
         let new_start_date = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
@@ -2325,7 +2292,7 @@ END:VCALENDAR";
 
         let new_start = CalDate::Date(new_start_date, CalCompType::Event.into());
         let new_end = CalDate::Date(new_end_date, CalCompType::Event.into());
-        file.change_start("single", new_start.clone(), Some(new_end.clone()), tz)
+        file.change_start("single", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         let base = file.component_with(|c| c.uid() == "single").unwrap();
@@ -2338,7 +2305,6 @@ END:VCALENDAR";
     #[test]
     fn change_start_recurrent_no_overwrites() {
         // A recurring event with no overwrite components: only the base DTSTART and DTEND shift.
-        let tz = &chrono_tz::Europe::Berlin;
         let start = NaiveDate::from_ymd_opt(2024, 1, 10)
             .unwrap()
             .and_hms_opt(9, 0, 0)
@@ -2372,7 +2338,7 @@ END:VCALENDAR";
             new_end_naive,
             "Europe/Berlin".to_string(),
         ));
-        file.change_start("recur", new_start.clone(), Some(new_end.clone()), tz)
+        file.change_start("recur", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         let base = file
@@ -2387,7 +2353,6 @@ END:VCALENDAR";
     fn change_start_recurrent_with_overwrites() {
         // A recurring event where two occurrences have overwrite components. After change_start,
         // both overwrite RIDs must be shifted by the same delta.
-        let tz = &chrono_tz::Europe::Berlin;
 
         // Base: daily at 09:00 for 5 days starting 2024-03-01.
         let base_start = NaiveDate::from_ymd_opt(2024, 3, 1)
@@ -2474,7 +2439,7 @@ END:VCALENDAR";
             new_base_end_naive,
             "Europe/Berlin".to_string(),
         ));
-        file.change_start("rec", new_start.clone(), Some(new_end.clone()), tz)
+        file.change_start("rec", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         // Base DTSTART must be updated.
@@ -2523,8 +2488,6 @@ END:VCALENDAR";
     #[test]
     fn change_start_allday_series_with_overwrite() {
         // All-day series shifted by one day: the overwrite RID (a Date) advances by one day.
-        let tz = &chrono_tz::Europe::Berlin;
-
         let base_date = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
         let rid_date = NaiveDate::from_ymd_opt(2024, 5, 3).unwrap(); // 3rd occurrence
 
@@ -2551,7 +2514,7 @@ END:VCALENDAR";
         let new_base_date = NaiveDate::from_ymd_opt(2024, 5, 2).unwrap();
         let new_start = CalDate::Date(new_base_date, CalCompType::Event.into());
         let new_end = CalDate::Date(new_base_date.succ_opt().unwrap(), CalCompType::Event.into());
-        file.change_start("allday", new_start.clone(), Some(new_end.clone()), tz)
+        file.change_start("allday", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         // Base must move.
@@ -2575,7 +2538,6 @@ END:VCALENDAR";
     fn change_start_preserves_overwrite_absolute_time() {
         // When the series time changes, an overwrite that was placed at a custom absolute time
         // keeps its DTSTART unchanged. Only its RID is shifted to match the new series time.
-        let tz = &chrono_tz::Europe::Berlin;
 
         // Series at 09:00, overwrite for 2nd occurrence manually placed at 14:00.
         let base_start = NaiveDate::from_ymd_opt(2024, 4, 1)
@@ -2640,7 +2602,6 @@ END:VCALENDAR";
                 new_base_start + Duration::hours(1),
                 "Europe/Berlin".to_string(),
             ))),
-            tz,
         )
         .unwrap();
 
@@ -2667,8 +2628,6 @@ END:VCALENDAR";
     fn change_start_allday_to_timed_converts_rid() {
         // Converting an all-day series to a timed series: the overwrite RID must be converted
         // from CalDate::Date to CalDate::DateTime with the same date and the new start time.
-        let tz = &chrono_tz::Europe::Berlin;
-
         let base_date = NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
         let rid_date = NaiveDate::from_ymd_opt(2024, 7, 3).unwrap(); // 3rd occurrence
 
@@ -2704,8 +2663,7 @@ END:VCALENDAR";
             new_base_naive + Duration::hours(1),
             "Europe/Berlin".to_string(),
         ));
-        file.change_start("conv", new_start, Some(new_end), tz)
-            .unwrap();
+        file.change_start("conv", new_start, Some(new_end)).unwrap();
 
         let ow_comp = file
             .component_with(|c| c.uid() == "conv" && c.rid().is_some())
@@ -2729,8 +2687,6 @@ END:VCALENDAR";
     fn change_start_timed_to_allday_converts_rid() {
         // Converting a timed series to an all-day series: the overwrite RID must be converted
         // from CalDate::DateTime to CalDate::Date, preserving the date.
-        let tz = &chrono_tz::Europe::Berlin;
-
         let base_naive = NaiveDate::from_ymd_opt(2024, 8, 1)
             .unwrap()
             .and_hms_opt(9, 0, 0)
@@ -2775,7 +2731,7 @@ END:VCALENDAR";
         let new_base_date = NaiveDate::from_ymd_opt(2024, 8, 1).unwrap();
         let new_start = CalDate::Date(new_base_date, CalCompType::Event.into());
         let new_end = CalDate::Date(new_base_date.succ_opt().unwrap(), CalCompType::Event.into());
-        file.change_start("conv2", new_start, Some(new_end), tz)
+        file.change_start("conv2", new_start, Some(new_end))
             .unwrap();
 
         let ow_comp = file
@@ -2794,149 +2750,7 @@ END:VCALENDAR";
     }
 
     #[test]
-    fn change_start_dst_gap_rejected() {
-        // Trying to set the new start to a time that falls in a DST gap must be rejected.
-        // In Europe/Berlin, 2025-03-30 02:30:00 does not exist (clocks jump from 02:00 to 03:00).
-        let tz = &chrono_tz::Europe::Berlin;
-        let base_start = NaiveDate::from_ymd_opt(2025, 3, 29)
-            .unwrap()
-            .and_hms_opt(9, 0, 0)
-            .unwrap();
-
-        let mut file = new_file(
-            EventBuilder::new("dst-gap")
-                .start(CalDate::DateTime(CalDateTime::Timezone(
-                    base_start,
-                    "Europe/Berlin".to_string(),
-                )))
-                .end(CalDate::DateTime(CalDateTime::Timezone(
-                    base_start + Duration::hours(1),
-                    "Europe/Berlin".to_string(),
-                )))
-                .rrule("FREQ=DAILY;COUNT=3".parse().unwrap())
-                .done(),
-        );
-
-        // 02:30 on 2025-03-30 is in the DST gap for Europe/Berlin.
-        let gap_time = NaiveDate::from_ymd_opt(2025, 3, 30)
-            .unwrap()
-            .and_hms_opt(2, 30, 0)
-            .unwrap();
-        let bad_start =
-            CalDate::DateTime(CalDateTime::Timezone(gap_time, "Europe/Berlin".to_string()));
-
-        let result = file.change_start("dst-gap", bad_start, None, tz);
-        assert!(matches!(result, Err(ColError::Validation(_))));
-
-        // File must be unchanged.
-        let base = file
-            .component_with(|c| c.uid() == "dst-gap" && c.rid().is_none())
-            .unwrap();
-        let original_start = CalDate::DateTime(CalDateTime::Timezone(
-            base_start,
-            "Europe/Berlin".to_string(),
-        ));
-        assert_eq!(base.start(), Some(&original_start));
-    }
-
-    #[test]
-    fn change_start_overwrite_rid_dst_gap_rejected() {
-        // When shifting the base start causes an overwrite RID to land in a DST gap, the whole
-        // operation is rejected and the file is left unchanged.
-        //
-        // In Europe/Berlin, 2025-03-30 02:30:00 does not exist.
-        // Series starts at 02:30 on 2025-03-29; shifting by +1 day would place the overwrite
-        // RID at 02:30 on 2025-03-30 — which is in the gap.
-        let tz = &chrono_tz::Europe::Berlin;
-
-        // The 2nd occurrence RID is also at 02:30 on 2025-03-30 (which is in the DST gap).
-        // We manufacture this by having the overwrite RID already be 02:30 on 2025-03-30.
-        // But wait: that date is invalid, so we have to place the overwrite at a valid date
-        // and then shift the series so the new RID lands in the gap.
-        //
-        // Strategy: series at 02:30 on 2025-03-28 (valid), overwrite for 2025-03-29 02:30
-        // (valid). Shift series by +1 day → new RID would be 2025-03-30 02:30 (gap) → rejected.
-        let series_start = NaiveDate::from_ymd_opt(2025, 3, 28)
-            .unwrap()
-            .and_hms_opt(2, 30, 0)
-            .unwrap();
-        let rid_naive = NaiveDate::from_ymd_opt(2025, 3, 29)
-            .unwrap()
-            .and_hms_opt(2, 30, 0)
-            .unwrap();
-        let rid = CalDate::DateTime(CalDateTime::Timezone(
-            rid_naive,
-            "Europe/Berlin".to_string(),
-        ));
-
-        let mut cal = Calendar::default();
-        cal.add_component(CalComponent::Event(
-            EventBuilder::new("rid-gap")
-                .start(CalDate::DateTime(CalDateTime::Timezone(
-                    series_start,
-                    "Europe/Berlin".to_string(),
-                )))
-                .end(CalDate::DateTime(CalDateTime::Timezone(
-                    series_start + Duration::hours(1),
-                    "Europe/Berlin".to_string(),
-                )))
-                .rrule("FREQ=DAILY;COUNT=3".parse().unwrap())
-                .done(),
-        ));
-        cal.add_component(CalComponent::Event(
-            EventBuilder::new("rid-gap")
-                .start(CalDate::DateTime(CalDateTime::Timezone(
-                    rid_naive,
-                    "Europe/Berlin".to_string(),
-                )))
-                .end(CalDate::DateTime(CalDateTime::Timezone(
-                    rid_naive + Duration::hours(1),
-                    "Europe/Berlin".to_string(),
-                )))
-                .rid(rid.clone())
-                .done(),
-        ));
-        let mut file = CalFile::new_simple(cal);
-
-        // Shift series by +1 day: new base start = 2025-03-29 02:30 (valid),
-        // but the existing overwrite RID would become 2025-03-30 02:30 (DST gap).
-        let new_series_start = NaiveDate::from_ymd_opt(2025, 3, 29)
-            .unwrap()
-            .and_hms_opt(2, 30, 0)
-            .unwrap();
-        let result = file.change_start(
-            "rid-gap",
-            CalDate::DateTime(CalDateTime::Timezone(
-                new_series_start,
-                "Europe/Berlin".to_string(),
-            )),
-            None,
-            tz,
-        );
-        assert!(matches!(result, Err(ColError::Validation(_))));
-
-        // File is unchanged: the original RID is still there.
-        let ow = file
-            .component_with(|c| c.uid() == "rid-gap" && c.rid().is_some())
-            .unwrap();
-        assert_eq!(ow.rid(), Some(&rid));
-
-        // Base start is also unchanged.
-        let base = file
-            .component_with(|c| c.uid() == "rid-gap" && c.rid().is_none())
-            .unwrap();
-        assert_eq!(
-            base.start(),
-            Some(&CalDate::DateTime(CalDateTime::Timezone(
-                series_start,
-                "Europe/Berlin".to_string(),
-            )))
-        );
-    }
-
-    #[test]
     fn change_start_uses_embedded_vtimezone_rules_for_validation() {
-        let tz = &chrono_tz::Europe::Berlin;
         let input = "BEGIN:VCALENDAR\n\
 BEGIN:VTIMEZONE\n\
 TZID:X-CUSTOM-DST\n\
@@ -2979,7 +2793,7 @@ END:VCALENDAR\n";
             "X-CUSTOM-DST".to_string(),
         ));
 
-        file.change_start("custom-dst", new_start.clone(), Some(new_end.clone()), tz)
+        file.change_start("custom-dst", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         let base = file
@@ -2992,7 +2806,6 @@ END:VCALENDAR\n";
     #[test]
     fn change_start_todo() {
         // change_start also works for VTODO components.
-        let tz = &chrono_tz::Europe::Berlin;
         let start_date = NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
         let due_date = NaiveDate::from_ymd_opt(2024, 7, 2).unwrap();
         let new_start_date = NaiveDate::from_ymd_opt(2024, 7, 8).unwrap();
@@ -3009,7 +2822,6 @@ END:VCALENDAR\n";
             "todo-cs",
             CalDate::Date(new_start_date, CalCompType::Todo.into()),
             Some(CalDate::Date(new_due_date, CalCompType::Todo.into())),
-            tz,
         )
         .unwrap();
 

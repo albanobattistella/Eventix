@@ -113,12 +113,8 @@ async fn run_copy(
         };
 
         let mut new_comp = comp.clone();
-        new_comp
-            .set_start_checked(Some(new_start), &ctx, tz)
-            .map_err(anyhow::Error::from)?;
-        new_comp
-            .set_end_checked(Some(new_end), &ctx, tz)
-            .map_err(anyhow::Error::from)?;
+        new_comp.set_start(Some(new_start));
+        new_comp.as_event_mut().unwrap().set_end(Some(new_end));
 
         let mut cal = file.calendar().clone();
         cal.delete_components(|_| true);

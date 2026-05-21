@@ -12,7 +12,6 @@ use crate::objects::{
     CalDate, CalDateTime, CalDateType, CalRRule, CalRRuleSide, CalTimeZone, CalWDayDesc, Calendar,
     ResolvedDateTime,
 };
-use crate::parser::{ParseError, ParseErrorType};
 use crate::util;
 
 /// Resolves calendar dates and datetimes using embedded `VTIMEZONE` data when available.
@@ -140,51 +139,6 @@ impl CalendarTimeZoneResolver {
         None
     }
 
-    /// Validates that the given calendar datetime is representable in both its declared timezone
-    /// semantics and the caller's local timezone.
-    ///
-    /// This rejects datetimes that fall into DST gaps or folds for floating values, and for
-    /// timezone-qualified values it additionally rejects invalid local times in the declared TZID.
-    pub fn validate_datetime(&self, dt: &CalDateTime, local_tz: &Tz) -> Result<(), ParseError> {
-        match dt {
-            CalDateTime::Utc(_) => Ok(()),
-            CalDateTime::Floating(local) => validate_system_time(local_tz, *local),
-            CalDateTime::Timezone(local, tzid) => {
-                match self.resolve_local(tzid, *local) {
-                    MappedLocalTime::None => {
-                        return Err(ParseError::from(ParseErrorType::NonExistentTime(format!(
-                            "{} in {}",
-                            local, tzid
-                        ))));
-                    }
-                    MappedLocalTime::Ambiguous(_, _) => {
-                        return Err(ParseError::from(ParseErrorType::AmbiguousTime(format!(
-                            "{} in {}",
-                            local, tzid
-                        ))));
-                    }
-                    MappedLocalTime::Single(_) => {}
-                }
-                Ok(())
-            }
-        }
-    }
-
-    /// Validates that the given calendar date is representable in the caller's local timezone.
-    ///
-    /// `DATE` values validate both their start and end-of-day boundaries. `DATE-TIME` values are
-    /// delegated to [`Self::validate_datetime`].
-    pub fn validate_date(&self, date: &CalDate, local_tz: &Tz) -> Result<(), ParseError> {
-        match date {
-            CalDate::Date(day, _) => {
-                validate_system_time(local_tz, day.and_hms_opt(0, 0, 0).unwrap())?;
-                validate_system_time(local_tz, day.and_hms_opt(23, 59, 59).unwrap())?;
-                Ok(())
-            }
-            CalDate::DateTime(dt) => self.validate_datetime(dt, local_tz),
-        }
-    }
-
     fn pseudo_local(&self, dt: &CalDateTime, fallback: &Tz) -> DateTime<Utc> {
         match dt {
             CalDateTime::Utc(dt) => *dt,
@@ -257,21 +211,8 @@ impl CalendarTimeZoneResolver {
     }
 }
 
-fn validate_system_time(tz: &Tz, local: NaiveDateTime) -> Result<(), ParseError> {
-    match tz.from_local_datetime(&local) {
-        MappedLocalTime::None => Err(ParseError::from(ParseErrorType::NonExistentTime(format!(
-            "{} in {}",
-            local, tz
-        )))),
-        MappedLocalTime::Ambiguous(_, _) => Err(ParseError::from(ParseErrorType::AmbiguousTime(
-            format!("{} in {}", local, tz),
-        ))),
-        MappedLocalTime::Single(_) => Ok(()),
-    }
-}
-
 fn fixed_from_fallback(tz: &Tz, local: NaiveDateTime) -> ResolvedDateTime {
-    fixed_from_fallback_opt(tz, local).expect("non-existent local time {local} in {tz}")
+    fixed_from_fallback_opt(tz, local).unwrap_or_else(|| fixed_from_gap(tz, local))
 }
 
 fn fixed_from_fallback_opt(tz: &Tz, local: NaiveDateTime) -> Option<ResolvedDateTime> {
@@ -280,6 +221,23 @@ fn fixed_from_fallback_opt(tz: &Tz, local: NaiveDateTime) -> Option<ResolvedDate
         MappedLocalTime::Ambiguous(early, _) => Some(early.fixed_offset().into()),
         MappedLocalTime::None => None,
     }
+}
+
+fn fixed_from_gap(tz: &Tz, local: NaiveDateTime) -> ResolvedDateTime {
+    let mut probe = local;
+    for _ in 0..(48 * 60) {
+        probe -= Duration::minutes(1);
+        match tz.from_local_datetime(&probe) {
+            MappedLocalTime::Single(dt) => {
+                return fixed_datetime(local, *dt.fixed_offset().offset()).into();
+            }
+            MappedLocalTime::Ambiguous(early, _) => {
+                return fixed_datetime(local, *early.fixed_offset().offset()).into();
+            }
+            MappedLocalTime::None => {}
+        }
+    }
+    panic!("non-existent local time {local} in {tz}")
 }
 
 fn map_system_time(tz: Tz, local: NaiveDateTime) -> MappedLocalTime<ResolvedDateTime> {
