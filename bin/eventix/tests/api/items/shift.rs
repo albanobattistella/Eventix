@@ -2,12 +2,15 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use chrono::{NaiveDate, Timelike};
+use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use eventix_ical::objects::{CalDate, CalDateTime, EventLike};
 use tempfile::TempDir;
 
 use crate::helper::edit::read_ics_by_uid;
-use crate::helper::{CAL_ID, encode_form, make_router, make_state, make_state_in_tz, post_query};
+use crate::helper::{
+    CAL_ID, assert_fold_in_tz, assert_gap_in_tz, encode_form, make_router, make_state,
+    make_state_in_tz, post_query,
+};
 
 use super::{
     write_allday_event_ics, write_event_ics, write_event_ics_in_tz,
@@ -157,6 +160,88 @@ async fn shift_allows_event_in_different_timezone() {
         .date(ics.components().first().unwrap().start().unwrap())
         .start_in(&berlin);
     assert_eq!(localized.hour(), 14);
+}
+
+#[tokio::test]
+async fn shift_local_fold_time_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "shift-local-fold";
+    write_event_ics(&cal_dir, uid, "Fold shift");
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+    assert_fold_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-10-25 02:00:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let qs = encode_form(&[("uid", uid), ("date", "2026-10-25"), ("hour", "2")]);
+    let (status, _) = post_query(router, &format!("/api/items/shift?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    match ics.components()[0].start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 10, 25).unwrap());
+            assert_eq!(dt.hour(), 2);
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn shift_recurring_foreign_gap_occurrence_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "shift-recurring-gap-foreign";
+    std::fs::write(
+        cal_dir.join(format!("{uid}.ics")),
+        format!(
+            "BEGIN:VCALENDAR\r\n\
+             BEGIN:VEVENT\r\n\
+             UID:{uid}\r\n\
+             DTSTAMP:20260101T000000Z\r\n\
+             DTSTART;TZID=America/New_York:20260307T023000\r\n\
+             DTEND;TZID=America/New_York:20260307T033000\r\n\
+             RRULE:FREQ=DAILY;COUNT=3\r\n\
+             SUMMARY:Recurring foreign gap\r\n\
+             END:VEVENT\r\n\
+             END:VCALENDAR\r\n"
+        ),
+    )
+    .unwrap();
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+    assert_gap_in_tz(
+        chrono_tz::America::New_York,
+        NaiveDateTime::parse_from_str("2026-03-08 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let qs = encode_form(&[
+        ("uid", uid),
+        ("rid", "TTAmerica/New_York;2026-03-07T02:30:00"),
+        ("date", "2026-03-08"),
+    ]);
+    let (status, _) = post_query(router, &format!("/api/items/shift?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let override_comp = ics
+        .components()
+        .iter()
+        .find(|c| c.rid().is_some())
+        .expect("expected RECURRENCE-ID override");
+    match override_comp.start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "America/New_York");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 3, 8).unwrap());
+            assert_eq!(dt.hour(), 3);
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
 }
 
 /// Shifting a specific occurrence of a recurring event creates a RECURRENCE-ID override.

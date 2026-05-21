@@ -5,7 +5,7 @@
 #[path = "../../helper/mod.rs"]
 mod helper;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeZone};
 use eventix_ical::objects::{
     CalDate, CalDateTime, CalRRuleFreq, CalRelated, CalRole, CalTrigger, EventLike,
 };
@@ -13,9 +13,11 @@ use tempfile::TempDir;
 
 use helper::create::{assert_success, read_created_ics};
 use helper::{
-    CAL_ID, assert_error, assert_no_ics, encode_form, first_component, make_router, make_state,
-    merge_fields, post,
+    CAL_ID, assert_error, assert_fold_in_tz, assert_gap_in_tz, assert_no_ics, encode_form,
+    first_component, make_router, make_state, merge_fields, post,
 };
+
+use crate::helper::make_state_in_tz;
 
 // --- Helpers specific to create-event tests ---
 
@@ -1150,15 +1152,19 @@ async fn timed_event_alarm_absolute_missing_datetime() {
 
 // --- Timezone DST errors ---
 
-/// Start datetime falls in the Europe/Berlin spring-forward gap (2026-03-29 02:30 does not exist).
-/// The handler must reject the event with an error.
+/// Start datetime falls in the Europe/Berlin spring-forward gap (2026-03-29 02:30 does not
+/// exist). The handler stores it using the pre-gap offset semantics.
 #[tokio::test]
 async fn timed_event_start_in_dst_gap() {
     let tmp = TempDir::new().unwrap();
     let cal_dir = tmp.path().join(CAL_ID);
     std::fs::create_dir_all(&cal_dir).unwrap();
-    let state = make_state(&cal_dir);
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
     let router = make_router(state);
+    assert_gap_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-03-29 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
 
     let fields = merge_fields(
         base_event_fields(),
@@ -1180,8 +1186,20 @@ async fn timed_event_start_in_dst_gap() {
 
     let (status, resp_body) = post(router, "/pages/items/add?ctype=Event", &body).await;
     assert_eq!(status, 200);
-    assert_error(&resp_body);
-    assert_no_ics(&cal_dir);
+    assert_success(&resp_body);
+
+    let ics = read_created_ics(&cal_dir);
+    let comp = first_component(&ics);
+    match comp.start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(
+                *dt,
+                NaiveDateTime::parse_from_str("2026-03-29 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+            );
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
 }
 
 /// A timed event using UTC timezone. Verifies that DTSTART and DTEND are stored as UTC (Z suffix).
@@ -1190,7 +1208,7 @@ async fn timed_event_utc() {
     let tmp = TempDir::new().unwrap();
     let cal_dir = tmp.path().join(CAL_ID);
     std::fs::create_dir_all(&cal_dir).unwrap();
-    let state = make_state(&cal_dir);
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
     let router = make_router(state);
 
     let fields = merge_fields(
@@ -1238,14 +1256,19 @@ async fn timed_event_utc() {
     }
 }
 
-/// The handler must reject the event with an error.
+/// End datetime falls in the Europe/Berlin autumn DST fold (ambiguous) and is accepted using the
+/// first occurrence.
 #[tokio::test]
 async fn timed_event_end_in_dst_fold() {
     let tmp = TempDir::new().unwrap();
     let cal_dir = tmp.path().join(CAL_ID);
     std::fs::create_dir_all(&cal_dir).unwrap();
-    let state = make_state(&cal_dir);
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
     let router = make_router(state);
+    assert_fold_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-10-25 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
 
     let fields = merge_fields(
         base_event_fields(),
@@ -1267,6 +1290,124 @@ async fn timed_event_end_in_dst_fold() {
 
     let (status, resp_body) = post(router, "/pages/items/add?ctype=Event", &body).await;
     assert_eq!(status, 200);
-    assert_error(&resp_body);
-    assert_no_ics(&cal_dir);
+    assert_success(&resp_body);
+
+    let ics = read_created_ics(&cal_dir);
+    let comp = first_component(&ics);
+    match comp.end_or_due().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(
+                *dt,
+                NaiveDateTime::parse_from_str("2026-10-25 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+            );
+        }
+        other => panic!("expected timezone DTEND, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn recurring_event_in_local_timezone_skips_gap_occurrence() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+    assert_gap_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-03-29 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let fields = merge_fields(
+        base_event_fields(),
+        &[
+            ("calendar", CAL_ID),
+            ("summary", "Recurring gap event"),
+            ("start_end[from][date]", "2026-03-28"),
+            ("start_end[from][time]", "02:30"),
+            ("start_end[to][date]", "2026-03-28"),
+            ("start_end[to][time]", "03:30"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to_enabled]", "true"),
+            ("start_end[timezone]", "Europe/Berlin"),
+            ("rrule[freq]", "DAILY"),
+            ("rrule[end]", "Count"),
+            ("rrule[count]", "3"),
+        ],
+    );
+    let body = encode_form(&fields);
+
+    let (status, resp_body) = post(router, "/pages/items/add?ctype=Event", &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_created_ics(&cal_dir);
+    let berlin = chrono_tz::Europe::Berlin;
+    let starts: Vec<_> = ics
+        .occurrences_between(
+            berlin.with_ymd_and_hms(2026, 3, 27, 0, 0, 0).unwrap(),
+            berlin.with_ymd_and_hms(2026, 4, 1, 0, 0, 0).unwrap(),
+            |_| true,
+        )
+        .map(|occ| occ.occurrence_start().unwrap())
+        .collect();
+    assert_eq!(starts.len(), 2);
+    assert_eq!(
+        starts[0],
+        berlin.with_ymd_and_hms(2026, 3, 28, 2, 30, 0).unwrap()
+    );
+    assert_eq!(
+        starts[1],
+        berlin.with_ymd_and_hms(2026, 3, 30, 2, 30, 0).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn recurring_event_in_foreign_timezone_keeps_first_fold_occurrence() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+    assert_fold_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-10-25 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let fields = merge_fields(
+        base_event_fields(),
+        &[
+            ("calendar", CAL_ID),
+            ("summary", "Recurring fold event"),
+            // that translates to 10/25/2026 2:30, which is in a DST fold in Europe/Berlin
+            ("start_end[from][date]", "2026-10-24"),
+            ("start_end[from][time]", "21:30"),
+            ("start_end[to][date]", "2026-10-24"),
+            ("start_end[to][time]", "22:30"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to_enabled]", "true"),
+            ("start_end[timezone]", "America/New_York"),
+            ("rrule[freq]", "DAILY"),
+            ("rrule[end]", "Count"),
+            ("rrule[count]", "3"),
+        ],
+    );
+    let body = encode_form(&fields);
+
+    let (status, resp_body) = post(router, "/pages/items/add?ctype=Event", &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_created_ics(&cal_dir);
+    let ny = chrono_tz::America::New_York;
+    let starts: Vec<_> = ics
+        .occurrences_between(
+            ny.with_ymd_and_hms(2026, 10, 23, 0, 0, 0).unwrap(),
+            ny.with_ymd_and_hms(2026, 10, 27, 23, 59, 59).unwrap(),
+            |_| true,
+        )
+        .map(|occ| occ.resolved_occurrence_start().unwrap().to_rfc3339())
+        .collect();
+    assert_eq!(starts[0], "2026-10-24T21:30:00-04:00");
+    assert_eq!(starts[1], "2026-10-25T21:30:00-04:00");
 }

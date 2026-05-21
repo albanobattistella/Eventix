@@ -5,8 +5,8 @@
 #[path = "../../helper/mod.rs"]
 mod helper;
 
-use chrono::NaiveDate;
-use eventix_ical::objects::{CalDate, CalTodoStatus, EventLike};
+use chrono::{NaiveDate, TimeZone, Timelike};
+use eventix_ical::objects::{CalDate, CalDateTime, CalTodoStatus, EventLike};
 use tempfile::TempDir;
 
 use helper::edit::{
@@ -360,6 +360,97 @@ async fn series_edit_todo_add_rrule_with_new_start() {
     assert_eq!(*start, NaiveDate::from_ymd_opt(2026, 4, 30).unwrap());
     assert_eq!(*due, NaiveDate::from_ymd_opt(2026, 5, 1).unwrap());
     assert_eq!(rrule.count(), Some(4));
+}
+
+#[tokio::test]
+async fn series_edit_todo_due_in_local_dst_fold_is_accepted() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-todo-dst-fold";
+    let ics_path = write_todo_ics(&cal_dir, uid, "Fold todo");
+    let edit_start = mtime_nanos(&ics_path).to_string();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_edit_todo_fields(&edit_start),
+        &[
+            ("summary", "Fold todo"),
+            ("start_end[to][date]", "2026-10-25"),
+            ("start_end[to][time]", "02:30"),
+            ("start_end[to_enabled]", "true"),
+            ("alarm[calendar][durtype]", "BeforeEnd"),
+        ],
+    );
+    let body = encode_form(&fields);
+    let uri = format!("/pages/items/edit?mode=Series&uid={uid}&prev=%2F");
+
+    let (status, resp_body) = post(router, &uri, &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    match first_component(&ics).end_or_due().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 10, 25).unwrap());
+            assert_eq!(dt.hour(), 2);
+        }
+        other => panic!("expected timezone DUE, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn series_edit_recurring_todo_with_foreign_gap_start_skips_gap_occurrence() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+
+    let uid = "edit-recurring-todo-foreign-gap";
+    let ics_path = write_todo_ics(&cal_dir, uid, "Recurring gap todo");
+    let edit_start = mtime_nanos(&ics_path).to_string();
+
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let fields = merge_fields(
+        base_edit_todo_fields(&edit_start),
+        &[
+            ("summary", "Recurring gap todo"),
+            ("start_end[from][date]", "2026-03-07"),
+            ("start_end[from][time]", "02:30"),
+            ("start_end[from_enabled]", "true"),
+            ("start_end[to][date]", "2026-03-08"),
+            ("start_end[to][time]", "02:30"),
+            ("start_end[to_enabled]", "true"),
+            ("start_end[timezone]", "America/New_York"),
+            ("alarm[calendar][durtype]", "BeforeEnd"),
+            ("rrule[freq]", "DAILY"),
+            ("rrule[end]", "Count"),
+            ("rrule[count]", "3"),
+        ],
+    );
+    let body = encode_form(&fields);
+    let uri = format!("/pages/items/edit?mode=Series&uid={uid}&prev=%2F");
+
+    let (status, resp_body) = post(router, &uri, &body).await;
+    assert_eq!(status, 200);
+    assert_success(&resp_body);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let ny = chrono_tz::America::New_York;
+    let starts: Vec<_> = ics
+        .occurrences_between(
+            ny.with_ymd_and_hms(2026, 3, 6, 0, 0, 0).unwrap(),
+            ny.with_ymd_and_hms(2026, 3, 11, 0, 0, 0).unwrap(),
+            |_| true,
+        )
+        .map(|occ| occ.occurrence_start().unwrap())
+        .collect();
+    assert_eq!(starts.len(), 2);
 }
 
 // --- Error paths ---

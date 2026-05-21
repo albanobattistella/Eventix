@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use chrono::{NaiveDate, Timelike};
+use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use eventix_ical::objects::{CalDate, CalDateTime, EventLike};
 use tempfile::TempDir;
 
 use crate::helper::{
-    CAL_ID, encode_form, first_component, make_router, make_state, make_state_in_tz, post_query,
+    CAL_ID, assert_fold_in_tz, assert_gap_in_tz, encode_form, first_component, make_router,
+    make_state, make_state_in_tz, post_query,
 };
 
 use super::{
@@ -179,6 +180,90 @@ async fn copy_allows_event_in_different_timezone() {
         .date(comp.start().unwrap())
         .start_in(&berlin);
     assert_eq!(localized.hour(), 14);
+}
+
+#[tokio::test]
+async fn copy_local_gap_time_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "copy-local-gap";
+    write_event_ics(&cal_dir, uid, "Gap copy");
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+    assert_gap_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-03-29 02:00:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let qs = encode_form(&[("uid", uid), ("date", "2026-03-29"), ("hour", "2")]);
+    let (status, _) = post_query(router, &format!("/api/items/copy?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let entries: Vec<_> = std::fs::read_dir(&cal_dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            (p.extension().and_then(|s| s.to_str()) == Some("ics")
+                && p.file_stem().and_then(|s| s.to_str()) != Some(uid))
+            .then_some(p)
+        })
+        .collect();
+    let copy_ics = eventix_ical::col::CalFile::new_from_file(
+        std::sync::Arc::new(CAL_ID.to_string()),
+        entries[0].clone(),
+    )
+    .unwrap();
+    match copy_ics.components()[0].start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 3, 29).unwrap());
+            assert_eq!(dt.hour(), 3);
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn copy_foreign_fold_time_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "copy-foreign-fold";
+    write_event_ics_in_tz(&cal_dir, uid, "NY fold", "America/New_York", 9, 10);
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+    assert_fold_in_tz(
+        chrono_tz::America::New_York,
+        NaiveDateTime::parse_from_str("2026-11-01 01:00:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let qs = encode_form(&[("uid", uid), ("date", "2026-11-01"), ("hour", "6")]);
+    let (status, _) = post_query(router, &format!("/api/items/copy?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let entries: Vec<_> = std::fs::read_dir(&cal_dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            (p.extension().and_then(|s| s.to_str()) == Some("ics")
+                && p.file_stem().and_then(|s| s.to_str()) != Some(uid))
+            .then_some(p)
+        })
+        .collect();
+    let copy_ics = eventix_ical::col::CalFile::new_from_file(
+        std::sync::Arc::new(CAL_ID.to_string()),
+        entries[0].clone(),
+    )
+    .unwrap();
+    match copy_ics.components()[0].start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "America/New_York");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 11, 1).unwrap());
+            assert_eq!(dt.hour(), 1);
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
 }
 
 /// Attempting to copy a recurrent event returns an error.

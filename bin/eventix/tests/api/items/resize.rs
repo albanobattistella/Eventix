@@ -9,7 +9,9 @@ use eventix_ical::objects::{CalDate, CalDateTime, EventLike};
 use tempfile::TempDir;
 
 use crate::helper::edit::read_ics_by_uid;
-use crate::helper::{CAL_ID, encode_form, make_router, make_state_in_tz, post_query};
+use crate::helper::{
+    CAL_ID, assert_fold_in_tz, encode_form, make_router, make_state_in_tz, post_query,
+};
 
 use super::write_allday_event_ics;
 
@@ -95,7 +97,8 @@ async fn resize_end_time() {
     // Read the wall-clock naive time directly so the assertion is independent of the system
     // timezone.
     match end {
-        CalDate::DateTime(CalDateTime::Timezone(dt, _)) => {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tz)) => {
+            assert_eq!(tz, TEST_LOCALE_TZ);
             assert_eq!(dt.hour(), 11);
             assert_eq!(dt.minute(), 30);
         }
@@ -103,15 +106,9 @@ async fn resize_end_time() {
     }
 }
 
-/// Resizing the start time of an event stored in **UTC** (a timezone-neutral representation
-/// that is always different from any locale timezone) writes the new DTSTART to disk.
-///
-/// This exercises the cross-timezone conversion path in the handler. The event is stored at
-/// a fixed UTC instant (14:00–15:00 UTC on 2026-04-15). At runtime the locale timezone is
-/// read to compute a new start time that is guaranteed to be before the event's end in every
-/// possible system timezone.
+/// Resizing the start time of an event stored in **UTC** writes the new DTSTART in UTC to disk.
 #[tokio::test]
-async fn resize_start_time() {
+async fn resize_utc_event_start_time() {
     // Fixed UTC instant: 14:00–15:00 UTC on 2026-04-15. In every real-world timezone this
     // maps to a local time whose hour is in [0, 23]; when we request a new start of
     // (old_start_h - 1):30 (clamped to 00:30 at minimum) it is always strictly before the
@@ -175,11 +172,9 @@ async fn resize_start_time() {
     }
 }
 
-/// Resizing an event stored in **UTC** sets the new time in the locale timezone, which
-/// previously failed because it would try to use "UTC" as the TZID but with a naive local
-/// time.
+/// Resizing the end of an event stored in **UTC** writes the new DTEND in UTC to disk.
 #[tokio::test]
-async fn resize_utc_event_to_timezone() {
+async fn resize_utc_event_end_time() {
     let start_utc = NaiveDate::from_ymd_opt(2026, 4, 15)
         .unwrap()
         .and_hms_opt(14, 0, 0)
@@ -348,8 +343,8 @@ async fn resize_recurring_occurrence_creates_override() {
         &cal_dir,
         uid,
         "Weekly standup",
-        &in_tz(9, 0, "Europe/Berlin"),
-        &in_tz(10, 0, "Europe/Berlin"),
+        &in_tz(9, 0, TEST_LOCALE_TZ),
+        &in_tz(10, 0, TEST_LOCALE_TZ),
         Some("FREQ=WEEKLY;BYDAY=WE"),
     );
     let state = make_state_in_tz(&cal_dir, TEST_LOCALE_TZ);
@@ -357,7 +352,7 @@ async fn resize_recurring_occurrence_creates_override() {
 
     let qs = encode_form(&[
         ("uid", uid),
-        ("rid", "TTEurope/Berlin;2026-04-15T09:00:00"),
+        ("rid", &format!("TT{TEST_LOCALE_TZ};2026-04-15T09:00:00")),
         ("end_hour", "11"),
         ("end_minute", "0"),
     ]);
@@ -378,10 +373,118 @@ async fn resize_recurring_occurrence_creates_override() {
     // Read the wall-clock naive time directly so the assertion is independent of the system
     // timezone.
     match end {
-        CalDate::DateTime(CalDateTime::Timezone(dt, _)) => {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tz)) => {
+            assert_eq!(tz, TEST_LOCALE_TZ);
             assert_eq!(dt.hour(), 11);
         }
         other => panic!("expected Timezone DTEND, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn resize_end_in_local_dst_fold_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "resize-local-fold";
+    write_timed_event_ics(
+        &cal_dir,
+        uid,
+        "Fold resize",
+        &CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 10, 25)
+                .unwrap()
+                .and_hms_opt(1, 30, 0)
+                .unwrap(),
+            TEST_LOCALE_TZ.to_string(),
+        )),
+        &CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 10, 25)
+                .unwrap()
+                .and_hms_opt(3, 30, 0)
+                .unwrap(),
+            TEST_LOCALE_TZ.to_string(),
+        )),
+        None,
+    );
+    let state = make_state_in_tz(&cal_dir, TEST_LOCALE_TZ);
+    let router = make_router(state);
+    assert_fold_in_tz(
+        chrono_tz::Europe::Berlin,
+        NaiveDateTime::parse_from_str("2026-10-25 02:00:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let qs = encode_form(&[("uid", uid), ("end_hour", "2"), ("end_minute", "30")]);
+    let (status, _) = post_query(router, &format!("/api/items/resize?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    match ics.components()[0].end_or_due().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, TEST_LOCALE_TZ);
+            assert_eq!(dt.hour(), 2);
+            assert_eq!(dt.minute(), 30);
+        }
+        other => panic!("expected timezone DTEND, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn resize_recurring_foreign_fold_occurrence_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "resize-recurring-foreign-fold";
+    write_timed_event_ics(
+        &cal_dir,
+        uid,
+        "Recurring NY fold",
+        &CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 10, 31)
+                .unwrap()
+                .and_hms_opt(1, 30, 0)
+                .unwrap(),
+            "America/New_York".to_string(),
+        )),
+        &CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 10, 31)
+                .unwrap()
+                .and_hms_opt(2, 30, 0)
+                .unwrap(),
+            "America/New_York".to_string(),
+        )),
+        Some("FREQ=DAILY;COUNT=3"),
+    );
+    let state = make_state_in_tz(&cal_dir, TEST_LOCALE_TZ);
+    let router = make_router(state);
+    assert_fold_in_tz(
+        chrono_tz::America::New_York,
+        NaiveDateTime::parse_from_str("2026-11-01 01:00:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+    );
+
+    let qs = encode_form(&[
+        ("uid", uid),
+        ("rid", "TTAmerica/New_York;2026-10-31T01:30:00"),
+        ("end_hour", "7"),
+        ("end_minute", "0"),
+    ]);
+    let (status, _) = post_query(router, &format!("/api/items/resize?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let override_comp = ics
+        .components()
+        .iter()
+        .find(|c| c.rid().is_some())
+        .expect("expected RECURRENCE-ID override");
+    match override_comp.end_or_due().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "America/New_York");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 10, 31).unwrap());
+            assert_eq!(dt.hour(), 2);
+            assert_eq!(dt.minute(), 0);
+        }
+        other => panic!("expected timezone DTEND, got {other:?}"),
     }
 }
 

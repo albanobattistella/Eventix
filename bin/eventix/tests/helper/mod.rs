@@ -15,6 +15,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use chrono::{MappedLocalTime, NaiveDateTime, TimeZone};
 use eventix_ical::col::CalFile;
 use eventix_state::{
     CalendarSettings, CollectionSettings, EmailAccount, EventixState, Settings, SyncerType,
@@ -47,6 +48,27 @@ pub const COL_ID: &str = "col1";
 pub const CAL_ID: &str = "cal1";
 #[allow(dead_code)]
 pub const CAL2_ID: &str = "cal2";
+
+#[allow(dead_code)]
+pub fn assert_gap_in_tz(tz: chrono_tz::Tz, naive: NaiveDateTime) {
+    assert!(
+        matches!(tz.from_local_datetime(&naive), MappedLocalTime::None),
+        "expected {naive} to be a DST gap in {tz}"
+    );
+}
+
+#[allow(dead_code)]
+pub fn assert_fold_in_tz(tz: chrono_tz::Tz, naive: NaiveDateTime) {
+    match tz.from_local_datetime(&naive) {
+        MappedLocalTime::Ambiguous(first, second) => {
+            assert_ne!(
+                first.with_timezone(&chrono::Utc),
+                second.with_timezone(&chrono::Utc)
+            );
+        }
+        other => panic!("expected {naive} to be a DST fold in {tz}, got {other:?}"),
+    }
+}
 
 /// Creates an `EventixState` backed by a temporary `FileSystem` calendar directory.
 ///

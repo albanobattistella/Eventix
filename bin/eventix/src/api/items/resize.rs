@@ -9,11 +9,9 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
-use chrono::{Days, NaiveDateTime, NaiveTime, TimeZone};
+use chrono::{Days, NaiveDateTime, NaiveTime};
 use eventix_ical::col::Occurrence;
-use eventix_ical::objects::{
-    CalComponent, CalDate, DateContext, EventLike, ResolvedDateTime, UpdatableEventLike,
-};
+use eventix_ical::objects::{CalComponent, CalDate, DateContext, EventLike, UpdatableEventLike};
 use eventix_locale::Locale;
 use eventix_state::EventixState;
 use serde::{Deserialize, Serialize};
@@ -123,13 +121,8 @@ fn get_timespan(
         (start_dt, new_end)
     };
 
-    let convert_tz = |dt| -> anyhow::Result<CalDate> {
-        let fixed = ResolvedDateTime::new(
-            tz.from_local_datetime(dt)
-                .single()
-                .ok_or_else(|| anyhow!("Non-existent or ambiguous local time: {} in {}", dt, tz))?
-                .fixed_offset(),
-        );
+    let convert_tz = |dt: &NaiveDateTime| -> anyhow::Result<CalDate> {
+        let fixed = CalDate::resolve_local_datetime(*dt, tz).map_err(anyhow::Error::from)?;
         c.start()
             .unwrap()
             .from_resolved_in_tz(fixed, tz, ctx.resolver())
