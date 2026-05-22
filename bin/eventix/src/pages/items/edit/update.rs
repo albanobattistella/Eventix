@@ -231,7 +231,7 @@ fn action_update(
                 if let Some(new_start) = new_start
                     && should_shift_series
                 {
-                    file.change_start(&req.uid, new_start, new_end)
+                    file.change_series_range(&req.uid, new_start, new_end)
                         .context("Shifting overwrite RIDs failed")?;
                 }
             }

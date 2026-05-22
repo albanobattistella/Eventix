@@ -708,7 +708,7 @@ impl CalFile {
     /// Note that this does not save to file. Please call [`Self::save`] to do so. Note also that
     /// this method does *not* touch the base component (update DTSTAMP, etc.), but expects the
     /// caller to do so. However, updated overwrites are touched.
-    pub fn change_start(
+    pub fn change_series_range(
         &mut self,
         uid: &str,
         new_start: CalDate,
@@ -2271,7 +2271,7 @@ END:VCALENDAR";
         );
         let mut file = CalFile::new_simple(Calendar::default());
 
-        let result = file.change_start("no-such-uid", new_start, None);
+        let result = file.change_series_range("no-such-uid", new_start, None);
         assert!(matches!(result, Err(ColError::ComponentNotFound(_))));
     }
 
@@ -2292,7 +2292,7 @@ END:VCALENDAR";
 
         let new_start = CalDate::Date(new_start_date, CalCompType::Event.into());
         let new_end = CalDate::Date(new_end_date, CalCompType::Event.into());
-        file.change_start("single", new_start.clone(), Some(new_end.clone()))
+        file.change_series_range("single", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         let base = file.component_with(|c| c.uid() == "single").unwrap();
@@ -2338,7 +2338,7 @@ END:VCALENDAR";
             new_end_naive,
             "Europe/Berlin".to_string(),
         ));
-        file.change_start("recur", new_start.clone(), Some(new_end.clone()))
+        file.change_series_range("recur", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         let base = file
@@ -2439,7 +2439,7 @@ END:VCALENDAR";
             new_base_end_naive,
             "Europe/Berlin".to_string(),
         ));
-        file.change_start("rec", new_start.clone(), Some(new_end.clone()))
+        file.change_series_range("rec", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         // Base DTSTART must be updated.
@@ -2514,7 +2514,7 @@ END:VCALENDAR";
         let new_base_date = NaiveDate::from_ymd_opt(2024, 5, 2).unwrap();
         let new_start = CalDate::Date(new_base_date, CalCompType::Event.into());
         let new_end = CalDate::Date(new_base_date.succ_opt().unwrap(), CalCompType::Event.into());
-        file.change_start("allday", new_start.clone(), Some(new_end.clone()))
+        file.change_series_range("allday", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         // Base must move.
@@ -2592,7 +2592,7 @@ END:VCALENDAR";
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        file.change_start(
+        file.change_series_range(
             "pres",
             CalDate::DateTime(CalDateTime::Timezone(
                 new_base_start,
@@ -2663,7 +2663,8 @@ END:VCALENDAR";
             new_base_naive + Duration::hours(1),
             "Europe/Berlin".to_string(),
         ));
-        file.change_start("conv", new_start, Some(new_end)).unwrap();
+        file.change_series_range("conv", new_start, Some(new_end))
+            .unwrap();
 
         let ow_comp = file
             .component_with(|c| c.uid() == "conv" && c.rid().is_some())
@@ -2731,7 +2732,7 @@ END:VCALENDAR";
         let new_base_date = NaiveDate::from_ymd_opt(2024, 8, 1).unwrap();
         let new_start = CalDate::Date(new_base_date, CalCompType::Event.into());
         let new_end = CalDate::Date(new_base_date.succ_opt().unwrap(), CalCompType::Event.into());
-        file.change_start("conv2", new_start, Some(new_end))
+        file.change_series_range("conv2", new_start, Some(new_end))
             .unwrap();
 
         let ow_comp = file
@@ -2793,7 +2794,7 @@ END:VCALENDAR\n";
             "X-CUSTOM-DST".to_string(),
         ));
 
-        file.change_start("custom-dst", new_start.clone(), Some(new_end.clone()))
+        file.change_series_range("custom-dst", new_start.clone(), Some(new_end.clone()))
             .unwrap();
 
         let base = file
@@ -2818,7 +2819,7 @@ END:VCALENDAR\n";
         cal.add_component(CalComponent::Todo(todo));
         let mut file = CalFile::new_simple(cal);
 
-        file.change_start(
+        file.change_series_range(
             "todo-cs",
             CalDate::Date(new_start_date, CalCompType::Todo.into()),
             Some(CalDate::Date(new_due_date, CalCompType::Todo.into())),
