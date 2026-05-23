@@ -127,6 +127,8 @@ impl CalendarTimeZoneResolver {
     }
 
     fn offset_before_gap(&self, tzid: &str, local: NaiveDateTime) -> Option<FixedOffset> {
+        // RFC 5545 states that times in DST gaps are interpreted "using the UTC offset before the
+        // gap in local times". So, we take the offset of the first time before that which exists
         let mut probe = local;
         for _ in 0..(48 * 60) {
             probe -= Duration::minutes(1);
