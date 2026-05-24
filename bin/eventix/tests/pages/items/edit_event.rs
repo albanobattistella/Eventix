@@ -628,11 +628,9 @@ async fn following_edit_splits_series() {
         })
         .next()
         .expect("expected a second ICS file for the new series");
-    let new_tz = chrono_tz::UTC;
     let new_cal = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         new_ics_path,
-        &new_tz,
     )
     .unwrap();
     let new_comp = first_component(&new_cal);
@@ -738,7 +736,6 @@ async fn following_edit_empty_original_deletes_file() {
     let new_cal = eventix_ical::col::CalFile::new_from_file(
         std::sync::Arc::new(CAL_ID.to_string()),
         remaining[0].clone(),
-        &chrono_tz::UTC,
     )
     .unwrap();
     let new_comp = first_component(&new_cal);
@@ -928,7 +925,7 @@ async fn series_edit_end_before_start() {
     assert_error(&resp_body);
 }
 
-/// An edit with a start in the Europe/Berlin spring-forward DST gap is rejected.
+/// An edit with a start in the Europe/Berlin spring-forward DST gap is accepted.
 #[tokio::test]
 async fn series_edit_start_in_dst_gap() {
     let tmp = TempDir::new().unwrap();
@@ -939,7 +936,7 @@ async fn series_edit_start_in_dst_gap() {
     let ics_path = write_event_ics(&cal_dir, uid, "DST gap");
     let edit_start = mtime_nanos(&ics_path).to_string();
 
-    let state = make_state(&cal_dir);
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
     let router = make_router(state);
 
     let fields = merge_fields(
@@ -960,10 +957,22 @@ async fn series_edit_start_in_dst_gap() {
 
     let (status, resp_body) = post(router, &uri, &body).await;
     assert_eq!(status, 200);
-    assert_error(&resp_body);
+    assert_success(&resp_body);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    match first_component(&ics).start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(
+                *dt,
+                NaiveDateTime::parse_from_str("2026-03-29 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+            );
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
 }
 
-/// An edit with a start in the Europe/Berlin autumn DST fold (ambiguous) is rejected.
+/// An edit with a start in the Europe/Berlin autumn DST fold (ambiguous) is accepted.
 #[tokio::test]
 async fn series_edit_start_in_dst_fold() {
     let tmp = TempDir::new().unwrap();
@@ -974,7 +983,7 @@ async fn series_edit_start_in_dst_fold() {
     let ics_path = write_event_ics(&cal_dir, uid, "DST fold");
     let edit_start = mtime_nanos(&ics_path).to_string();
 
-    let state = make_state(&cal_dir);
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
     let router = make_router(state);
 
     let fields = merge_fields(
@@ -995,7 +1004,19 @@ async fn series_edit_start_in_dst_fold() {
 
     let (status, resp_body) = post(router, &uri, &body).await;
     assert_eq!(status, 200);
-    assert_error(&resp_body);
+    assert_success(&resp_body);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    match first_component(&ics).start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "Europe/Berlin");
+            assert_eq!(
+                *dt,
+                NaiveDateTime::parse_from_str("2026-10-25 02:30:00", "%Y-%m-%d %H:%M:%S").unwrap()
+            );
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
 }
 
 /// An absolute alarm with no datetime is rejected during a Series edit.

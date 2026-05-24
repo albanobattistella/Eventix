@@ -18,6 +18,7 @@ use chrono_tz::Tz;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::parser::{Parameter, ParseError, ParseErrorType, Property};
+use crate::util;
 
 use super::{CalCompType, CalendarTimeZoneResolver};
 
@@ -64,16 +65,6 @@ impl DateContext {
     /// Resolves the given calendar datetime into a concrete instant.
     pub fn resolve_datetime(&self, dt: &CalDateTime, fallback: &Tz) -> ResolvedDateTime {
         self.resolver.resolve_datetime(dt, fallback)
-    }
-
-    /// Validates the given calendar date using this context.
-    pub fn validate_date(&self, date: &CalDate, local_tz: &Tz) -> Result<(), ParseError> {
-        self.resolver.validate_date(date, local_tz)
-    }
-
-    /// Validates the given calendar datetime using this context.
-    pub fn validate_datetime(&self, dt: &CalDateTime, local_tz: &Tz) -> Result<(), ParseError> {
-        self.resolver.validate_datetime(dt, local_tz)
     }
 
     /// Converts the given calendar date into a UTC-normalized form.
@@ -134,11 +125,6 @@ impl<'a> BoundCalDate<'a> {
     /// Resolves the end of this date and converts it into the given display timezone.
     pub fn end_in(&self, tz: &Tz) -> DateTime<Tz> {
         self.resolved_end(tz).with_timezone(tz)
-    }
-
-    /// Validates this date using the resolver captured in the bound context.
-    pub fn validate(&self, local_tz: &Tz) -> Result<(), ParseError> {
-        self.ctx.validate_date(self.raw, local_tz)
     }
 
     /// Formats this date when interpreted as the start of an event.
@@ -475,18 +461,6 @@ impl CalDate {
         }
     }
 
-    /// Validates this date using the given timezone resolver.
-    ///
-    /// This behaves like [`Self::validate`], but resolves `TZID` values through the provided
-    /// resolver so embedded `VTIMEZONE` definitions are taken into account.
-    pub fn validate_with(
-        &self,
-        local_tz: &Tz,
-        resolver: &CalendarTimeZoneResolver,
-    ) -> Result<(), ParseError> {
-        resolver.validate_date(self, local_tz)
-    }
-
     /// Resolves this date as the start of an event using the given timezone resolver.
     ///
     /// Floating values and plain dates use `fallback` when they need a timezone context. `TZID`
@@ -660,15 +634,9 @@ impl CalDateTime {
     /// Attempts to interpret the given date in the given timezone and returns a `Self::Utc`
     /// instance for that date.
     fn from_local_as_utc(local: NaiveDateTime, tz: &Tz) -> Result<Self, ParseError> {
-        match tz.from_local_datetime(&local) {
-            MappedLocalTime::Single(dt) => Ok(Self::Utc(dt.with_timezone(&Utc))),
-            MappedLocalTime::Ambiguous(_, _) => Err(ParseError::from(
-                ParseErrorType::AmbiguousTime(format!("{} in {}", local, tz)),
-            )),
-            MappedLocalTime::None => Err(ParseError::from(ParseErrorType::NonExistentTime(
-                format!("{} in {}", local, tz),
-            ))),
-        }
+        Ok(Self::Utc(
+            util::resolve_local_time(tz, local).with_timezone(&Utc),
+        ))
     }
 
     /// Builds and returns a [`Property`] for this datetime.
@@ -1224,176 +1192,5 @@ mod tests {
             invalid_number_err.ty(),
             ParseErrorType::InvalidNumber(_)
         ));
-    }
-
-    // --- DST gap and fold validation ---
-
-    #[test]
-    fn validate_utc_always_passes() {
-        let dt = CalDateTime::Utc(
-            NaiveDate::from_ymd_opt(2025, 3, 30)
-                .and_then(|d| d.and_hms_opt(2, 30, 0))
-                .unwrap()
-                .and_utc(),
-        );
-        // 2:30 AM doesn't exist in Europe/Berlin on 2025-03-30, but UTC is always valid.
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::Europe__Berlin)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn validate_floating_rejects_dst_gap() {
-        let dt = CalDateTime::Floating(
-            NaiveDate::from_ymd_opt(2025, 3, 30)
-                .and_then(|d| d.and_hms_opt(2, 30, 0))
-                .unwrap(),
-        );
-        // 2:30 AM doesn't exist in Europe/Berlin on 2025-03-30 (spring forward).
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::Europe__Berlin)
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn validate_floating_accepts_valid_time() {
-        let dt = CalDateTime::Floating(
-            NaiveDate::from_ymd_opt(2025, 3, 30)
-                .and_then(|d| d.and_hms_opt(10, 0, 0))
-                .unwrap(),
-        );
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::Europe__Berlin)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn validate_timezone_rejects_declared_tz_gap() {
-        // 2:30 AM doesn't exist in Europe/Berlin on 2025-03-30.
-        let dt = CalDateTime::Timezone(
-            NaiveDate::from_ymd_opt(2025, 3, 30)
-                .and_then(|d| d.and_hms_opt(2, 30, 0))
-                .unwrap(),
-            "Europe/Berlin".to_string(),
-        );
-        // Even if local_tz is UTC (where it's fine), the declared tz rejects it.
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::UTC)
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn validate_timezone_ignores_unrelated_local_tz_gap() {
-        // A timezone-qualified value should validate against its declared TZID semantics rather than
-        // the caller's unrelated local timezone.
-        let dt = CalDateTime::Timezone(
-            NaiveDate::from_ymd_opt(2025, 3, 9)
-                .and_then(|d| d.and_hms_opt(2, 30, 0))
-                .unwrap(),
-            "Europe/Berlin".to_string(),
-        );
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::America__New_York)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn validate_timezone_accepts_valid_time() {
-        let dt = CalDateTime::Timezone(
-            NaiveDate::from_ymd_opt(2025, 1, 15)
-                .and_then(|d| d.and_hms_opt(10, 0, 0))
-                .unwrap(),
-            "Europe/Berlin".to_string(),
-        );
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::Europe__Berlin)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn validate_floating_rejects_dst_fold() {
-        let dt = CalDateTime::Floating(
-            NaiveDate::from_ymd_opt(2025, 10, 26)
-                .and_then(|d| d.and_hms_opt(2, 30, 0))
-                .unwrap(),
-        );
-        // 2:30 AM on 2025-10-26 is ambiguous in Europe/Berlin (fall back).
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::Europe__Berlin)
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn validate_timezone_rejects_declared_tz_fold() {
-        // 2:30 AM on 2025-10-26 is ambiguous in Europe/Berlin (fall back).
-        let dt = CalDateTime::Timezone(
-            NaiveDate::from_ymd_opt(2025, 10, 26)
-                .and_then(|d| d.and_hms_opt(2, 30, 0))
-                .unwrap(),
-            "Europe/Berlin".to_string(),
-        );
-        // Even if local_tz is UTC (where it's unambiguous), the declared tz rejects it.
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::UTC)
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn validate_timezone_ignores_unrelated_local_tz_fold() {
-        // A timezone-qualified value should validate against its declared TZID semantics rather than
-        // the caller's unrelated local timezone.
-        let dt = CalDateTime::Timezone(
-            NaiveDate::from_ymd_opt(2025, 11, 2)
-                .and_then(|d| d.and_hms_opt(1, 30, 0))
-                .unwrap(),
-            "Europe/Berlin".to_string(),
-        );
-        assert!(
-            DateContext::system()
-                .validate_datetime(&dt, &Tz::America__New_York)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn validate_caldate_date_rejects_midnight_gap() {
-        // Cuba (America/Havana) had midnight DST transitions historically
-        // (e.g., 2007-03-11 00:00 sprang forward to 01:00). Use that.
-        let date = CalDate::Date(
-            NaiveDate::from_ymd_opt(2007, 3, 11).unwrap(),
-            CalDateType::Inclusive,
-        );
-        let result = DateContext::system().validate_date(&date, &Tz::America__Havana);
-        // Midnight doesn't exist on this date in Havana.
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn validate_caldate_date_accepts_normal_date() {
-        let date = CalDate::Date(
-            NaiveDate::from_ymd_opt(2025, 6, 15).unwrap(),
-            CalDateType::Exclusive,
-        );
-        assert!(
-            DateContext::system()
-                .validate_date(&date, &Tz::Europe__Berlin)
-                .is_ok()
-        );
     }
 }

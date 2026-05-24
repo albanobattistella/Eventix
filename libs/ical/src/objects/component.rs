@@ -12,8 +12,7 @@ use tracing::warn;
 
 use crate::objects::{
     CalAlarm, CalAttendee, CalDate, CalDateTime, CalDuration, CalEvent, CalOrganizer, CalRRule,
-    CalTodo, CalendarTimeZoneResolver, DateContext, EventLike, ResolvedDateTime,
-    UpdatableEventLike,
+    CalTodo, CalendarTimeZoneResolver, EventLike, ResolvedDateTime, UpdatableEventLike,
 };
 use crate::parser::{
     LineReader, LineResultExt, ParseError, ParseErrorType, Property, PropertyConsumer,
@@ -604,10 +603,19 @@ impl Iterator for CompDateIterator<'_, '_> {
                 resolver,
                 tzid,
                 fallback,
-            } => recur.next().map(|date| {
-                let date = resolver.resolve_pseudo_local(date, tzid.as_deref(), fallback);
-                (CompDateType::Start, date, exdates.contains(&date))
-            }),
+            } => {
+                // We may encounter recurrence candidates that fall into DST gaps. Use the
+                // non-panicking resolver variant and skip such candidates.
+                loop {
+                    let date = recur.next()?;
+                    if let Some(resolved) =
+                        resolver.resolve_pseudo_local(date, tzid.as_deref(), fallback)
+                    {
+                        return Some((CompDateType::Start, resolved, exdates.contains(&resolved)));
+                    }
+                    // otherwise skip and continue loop
+                }
+            }
             Self::Single(single) => single.take().map(|(ty, date)| (ty, date, false)),
         }
     }
@@ -837,57 +845,6 @@ impl CalComponent {
             (None, None) => CompDateIterator::new_empty(),
         }
     }
-
-    /// Sets the start of the component, validating it against the user's local timezone.
-    ///
-    /// Returns an error when the datetime falls in a DST gap (non-existent time) or DST fold
-    /// (ambiguous time).
-    pub fn set_start_checked(
-        &mut self,
-        start: Option<CalDate>,
-        ctx: &DateContext,
-        local_tz: &Tz,
-    ) -> Result<(), ParseError> {
-        if let Some(ref d) = start {
-            ctx.validate_date(d, local_tz)?;
-        }
-        self.set_start(start);
-        Ok(())
-    }
-
-    /// Sets the end of an event component, validating it against the user's local timezone.
-    ///
-    /// Returns an error when the datetime falls in a DST gap (non-existent time) or DST fold
-    /// (ambiguous time). Panics if the component is not an event.
-    pub fn set_end_checked(
-        &mut self,
-        end: Option<CalDate>,
-        ctx: &DateContext,
-        local_tz: &Tz,
-    ) -> Result<(), ParseError> {
-        if let Some(ref d) = end {
-            ctx.validate_date(d, local_tz)?;
-        }
-        self.as_event_mut().unwrap().set_end(end);
-        Ok(())
-    }
-
-    /// Sets the due date of a TODO component, validating it against the user's local timezone.
-    ///
-    /// Returns an error when the datetime falls in a DST gap (non-existent time) or DST fold
-    /// (ambiguous time). Panics if the component is not a TODO.
-    pub fn set_due_checked(
-        &mut self,
-        due: Option<CalDate>,
-        ctx: &DateContext,
-        local_tz: &Tz,
-    ) -> Result<(), ParseError> {
-        if let Some(ref d) = due {
-            ctx.validate_date(d, local_tz)?;
-        }
-        self.as_todo_mut().unwrap().set_due(due);
-        Ok(())
-    }
 }
 
 impl PropertyProducer for CalComponent {
@@ -1072,7 +1029,7 @@ mod tests {
     use chrono::TimeZone;
     use chrono_tz::UTC;
 
-    use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, DateContext, EventLike};
+    use crate::objects::{CalComponent, CalEvent, Calendar, CompDateType, EventLike};
     use crate::parser::{LineReader, ParseError, ParseErrorType, Property, PropertyProducer};
 
     use super::{CalCompType, EventLikeComponent};
@@ -1319,100 +1276,5 @@ mod tests {
     fn component_type_display_is_exact() {
         assert_eq!(format!("{}", CalCompType::Event), "Event");
         assert_eq!(format!("{}", CalCompType::Todo), "Todo");
-    }
-
-    // --- checked setters ---
-
-    #[test]
-    fn set_checked_rejects_invalid_times() {
-        use chrono::NaiveDate;
-        use chrono_tz::Tz;
-
-        use crate::objects::{CalDate, CalDateTime, CalTodo, EventLike};
-
-        // Helper to build a floating CalDate at the given (y, m, d, h, min).
-        let floating = |y, mo, d, h, mi| {
-            CalDate::DateTime(CalDateTime::Floating(
-                NaiveDate::from_ymd_opt(y, mo, d)
-                    .and_then(|dt| dt.and_hms_opt(h, mi, 0))
-                    .unwrap(),
-            ))
-        };
-
-        // 2:30 AM on 2025-03-30 doesn't exist in Europe/Berlin (spring forward / gap).
-        let gap = floating(2025, 3, 30, 2, 30);
-        // 2:30 AM on 2025-10-26 is ambiguous in Europe/Berlin (fall back / fold).
-        let fold = floating(2025, 10, 26, 2, 30);
-        let ctx = DateContext::system();
-
-        // set_start_checked: both gap and fold must be rejected, leaving start None.
-        let mut ev = CalComponent::Event(CalEvent::new("ev-1"));
-        assert!(
-            ev.set_start_checked(Some(gap.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(ev.start().is_none());
-        assert!(
-            ev.set_start_checked(Some(fold.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(ev.start().is_none());
-
-        // set_end_checked: both gap and fold must be rejected, leaving end None.
-        let mut ev = CalComponent::Event(CalEvent::new("ev-2"));
-        assert!(
-            ev.set_end_checked(Some(gap.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(ev.as_event().unwrap().end().is_none());
-        assert!(
-            ev.set_end_checked(Some(fold.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(ev.as_event().unwrap().end().is_none());
-
-        // set_due_checked: both gap and fold must be rejected, leaving due None.
-        let mut td = CalComponent::Todo(CalTodo::new("td-1"));
-        assert!(
-            td.set_due_checked(Some(gap.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(td.as_todo().unwrap().due().is_none());
-        assert!(
-            td.set_due_checked(Some(fold.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_err()
-        );
-        assert!(td.as_todo().unwrap().due().is_none());
-    }
-
-    #[test]
-    fn set_checked_accepts_valid_time_and_none() {
-        use chrono::NaiveDate;
-        use chrono_tz::Tz;
-
-        use crate::objects::{CalDate, CalDateTime, EventLike};
-
-        // 10:00 AM on 2025-03-30 is a valid time in Europe/Berlin.
-        let valid = CalDate::DateTime(CalDateTime::Floating(
-            NaiveDate::from_ymd_opt(2025, 3, 30)
-                .and_then(|d| d.and_hms_opt(10, 0, 0))
-                .unwrap(),
-        ));
-        let ctx = DateContext::system();
-
-        let mut ev = CalComponent::Event(CalEvent::new("ev-v"));
-        assert!(
-            ev.set_start_checked(Some(valid.clone()), &ctx, &Tz::Europe__Berlin)
-                .is_ok()
-        );
-        assert!(ev.start().is_some());
-
-        // None is always accepted (clears the field).
-        let mut ev = CalComponent::Event(CalEvent::new("ev-n"));
-        assert!(
-            ev.set_start_checked(None, &ctx, &Tz::Europe__Berlin)
-                .is_ok()
-        );
-        assert!(ev.set_end_checked(None, &ctx, &Tz::Europe__Berlin).is_ok());
     }
 }

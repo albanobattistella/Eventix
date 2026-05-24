@@ -63,7 +63,6 @@ impl Syncer for FSSyncer {
     }
 
     fn finish(&mut self, state: &mut State, result: &mut SyncColResult) -> anyhow::Result<()> {
-        let local_tz = *state.timezone();
         let mut collection_changed = false;
 
         for (cal_id, should_sync) in &mut self.changed {
@@ -74,8 +73,8 @@ impl Syncer for FSSyncer {
             let dir = state.store_mut().directory_mut(&cal_id.clone().into())?;
 
             let mut changed = false;
-            changed |= dir.rescan_for_additions(&local_tz)?;
-            changed |= dir.rescan_files(&local_tz)?;
+            changed |= dir.rescan_for_additions()?;
+            changed |= dir.rescan_files()?;
             changed |= dir.rescan_for_deletions();
             *should_sync = changed;
             collection_changed |= changed;

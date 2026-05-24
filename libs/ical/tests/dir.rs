@@ -10,7 +10,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-use chrono_tz::Tz;
 use tempfile::TempDir;
 
 use eventix_ical::col::{CalDir, ColError};
@@ -34,7 +33,6 @@ fn new_from_dir_loads_ics_files() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -52,7 +50,6 @@ fn new_from_dir_empty_dir() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -76,7 +73,6 @@ fn new_from_dir_skips_non_ics_and_subdirectories() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -91,7 +87,6 @@ fn new_from_dir_nonexistent_path_returns_error() {
         PathBuf::from("/nonexistent/path/that/does/not/exist"),
         "Test".into(),
         false,
-        &Tz::UTC,
     );
 
     assert!(matches!(result, Err(ColError::ReadDir(_, _))));
@@ -111,20 +106,19 @@ fn rescan_for_additions_detects_new_file() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
     assert_eq!(dir.files().len(), 1);
 
-    let changed = dir.rescan_for_additions(&Tz::UTC).unwrap();
+    let changed = dir.rescan_for_additions().unwrap();
     assert!(!changed);
     assert_eq!(dir.files().len(), 1);
 
     // Add a second file to the directory after the initial load.
     copy_fixture("event_b.ics", &tmp);
 
-    let changed = dir.rescan_for_additions(&Tz::UTC).unwrap();
+    let changed = dir.rescan_for_additions().unwrap();
 
     assert!(changed);
     assert_eq!(dir.files().len(), 2);
@@ -145,7 +139,6 @@ fn rescan_files_reloads_changed_file() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -175,7 +168,7 @@ fn rescan_files_reloads_changed_file() {
     )
     .unwrap();
 
-    let changed = dir.rescan_files(&Tz::UTC).unwrap();
+    let changed = dir.rescan_files().unwrap();
 
     assert!(changed);
 
@@ -202,7 +195,6 @@ fn rescan_for_deletions_detects_removed_file() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -236,7 +228,6 @@ fn delete_by_uid_removes_component_and_file_from_disk() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -262,7 +253,6 @@ fn delete_by_uid_saves_file_when_not_empty() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -280,7 +270,6 @@ fn delete_by_uid_saves_file_when_not_empty() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     assert!(reloaded.file_by_id("event-c").is_none());
@@ -297,7 +286,6 @@ fn delete_by_uid_not_found_returns_error() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -319,7 +307,6 @@ fn save_persists_mutations_to_disk() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -339,7 +326,6 @@ fn save_persists_mutations_to_disk() {
         tmp.path().to_path_buf(),
         "Test".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     let summary = reloaded

@@ -41,10 +41,10 @@ async fn run_add(state: &mut eventix_state::State, req: Request) -> anyhow::Resu
         &locale,
         &req.calendar,
         CalCompType::Todo,
-        |_cal, _alarm_type, comp, _persalarms, _organizer, ctx, _locale| {
+        |_cal, _alarm_type, comp, _persalarms, _organizer, _ctx, _locale| {
             comp.set_summary(Some(req.summary));
             if let Some(due_date) = req.due_date.to_caldate(CalDateType::Inclusive, true) {
-                comp.set_due_checked(Some(due_date), ctx, locale.timezone())?;
+                comp.as_todo_mut().unwrap().set_due(Some(due_date));
             }
             Ok(())
         },

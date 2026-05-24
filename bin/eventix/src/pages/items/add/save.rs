@@ -40,9 +40,9 @@ async fn action_update(
         locale,
         &form.calendar,
         req.ctype,
-        |cal, alarm_type, comp, persalarms, organizer, ctx, locale| {
+        |cal, alarm_type, comp, persalarms, organizer, _ctx, locale| {
             comp.set_rrule(rrule);
-            form.update(cal, alarm_type, comp, persalarms, organizer, ctx, locale)
+            form.update(cal, alarm_type, comp, persalarms, organizer, locale)
         },
     )?;
 

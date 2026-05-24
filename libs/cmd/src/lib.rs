@@ -198,20 +198,15 @@ async fn handle_import(state: EventixState, req: ImportOptions) -> anyhow::Resul
     };
 
     let mut state = state.lock().await;
-    let local_tz = *state.timezone();
     let cal = Arc::from(req.calendar.clone());
     let dir = state
         .store_mut()
         .directory_mut(&cal)
         .map_err(anyhow::Error::from)?;
 
-    let files = CalFile::new_from_external_file(
-        cal.clone(),
-        dir.path().clone(),
-        req.file.clone().into(),
-        &local_tz,
-    )
-    .context(format!("Parsing file '{}' failed", req.file))?;
+    let files =
+        CalFile::new_from_external_file(cal.clone(), dir.path().clone(), req.file.clone().into())
+            .context(format!("Parsing file '{}' failed", req.file))?;
 
     // first delete any existing files with those uids
     for f in &files {

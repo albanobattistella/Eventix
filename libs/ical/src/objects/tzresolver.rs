@@ -12,7 +12,6 @@ use crate::objects::{
     CalDate, CalDateTime, CalDateType, CalRRule, CalRRuleSide, CalTimeZone, CalWDayDesc, Calendar,
     ResolvedDateTime,
 };
-use crate::parser::{ParseError, ParseErrorType};
 use crate::util;
 
 /// Resolves calendar dates and datetimes using embedded `VTIMEZONE` data when available.
@@ -83,15 +82,34 @@ impl CalendarTimeZoneResolver {
         match dt {
             CalDateTime::Utc(dt) => dt.fixed_offset().into(),
             CalDateTime::Floating(local) => fixed_from_fallback(fallback, *local),
-            CalDateTime::Timezone(local, tzid) => self.resolve_local_or_earlier(tzid, *local),
+            CalDateTime::Timezone(local, tzid) => self.resolve_local_or_pre_gap(tzid, *local),
         }
     }
 
-    fn resolve_local_or_earlier(&self, tzid: &str, local: NaiveDateTime) -> ResolvedDateTime {
+    fn resolve_local_or_pre_gap(&self, tzid: &str, local: NaiveDateTime) -> ResolvedDateTime {
         match self.resolve_local(tzid, local) {
             MappedLocalTime::Single(dt) => dt,
             MappedLocalTime::Ambiguous(early, _) => early,
-            MappedLocalTime::None => panic!("non-existent local time {local} in {tzid}"),
+            MappedLocalTime::None => self
+                .offset_before_gap(tzid, local)
+                .map(|offset| fixed_datetime(local, offset).into())
+                .unwrap_or_else(|| panic!("non-existent local time {local} in {tzid}")),
+        }
+    }
+
+    /// Non-panicking variant used by runtime recurrence expansion. Returns `None` for DST gaps
+    /// (non-existent local times) instead of panicking. Ambiguous times still resolve to the
+    /// earlier instance (RFC semantics for both DTSTART and recurrence expansion keep the first
+    /// occurrence).
+    fn resolve_local_or_earlier_opt(
+        &self,
+        tzid: &str,
+        local: NaiveDateTime,
+    ) -> Option<ResolvedDateTime> {
+        match self.resolve_local(tzid, local) {
+            MappedLocalTime::Single(dt) => Some(dt),
+            MappedLocalTime::Ambiguous(early, _) => Some(early),
+            MappedLocalTime::None => None,
         }
     }
 
@@ -108,49 +126,19 @@ impl CalendarTimeZoneResolver {
         map_system_time(Tz::UTC, local)
     }
 
-    /// Validates that the given calendar datetime is representable in both its declared timezone
-    /// semantics and the caller's local timezone.
-    ///
-    /// This rejects datetimes that fall into DST gaps or folds for floating values, and for
-    /// timezone-qualified values it additionally rejects invalid local times in the declared TZID.
-    pub fn validate_datetime(&self, dt: &CalDateTime, local_tz: &Tz) -> Result<(), ParseError> {
-        match dt {
-            CalDateTime::Utc(_) => Ok(()),
-            CalDateTime::Floating(local) => validate_system_time(local_tz, *local),
-            CalDateTime::Timezone(local, tzid) => {
-                match self.resolve_local(tzid, *local) {
-                    MappedLocalTime::None => {
-                        return Err(ParseError::from(ParseErrorType::NonExistentTime(format!(
-                            "{} in {}",
-                            local, tzid
-                        ))));
-                    }
-                    MappedLocalTime::Ambiguous(_, _) => {
-                        return Err(ParseError::from(ParseErrorType::AmbiguousTime(format!(
-                            "{} in {}",
-                            local, tzid
-                        ))));
-                    }
-                    MappedLocalTime::Single(_) => {}
-                }
-                Ok(())
+    fn offset_before_gap(&self, tzid: &str, local: NaiveDateTime) -> Option<FixedOffset> {
+        // RFC 5545 states that times in DST gaps are interpreted "using the UTC offset before the
+        // gap in local times". So, we take the offset of the first time before that which exists
+        let mut probe = local;
+        for _ in 0..(48 * 60) {
+            probe -= Duration::minutes(1);
+            match self.resolve_local(tzid, probe) {
+                MappedLocalTime::Single(dt) => return Some(*dt.offset()),
+                MappedLocalTime::Ambiguous(early, _) => return Some(*early.offset()),
+                MappedLocalTime::None => {}
             }
         }
-    }
-
-    /// Validates that the given calendar date is representable in the caller's local timezone.
-    ///
-    /// `DATE` values validate both their start and end-of-day boundaries. `DATE-TIME` values are
-    /// delegated to [`Self::validate_datetime`].
-    pub fn validate_date(&self, date: &CalDate, local_tz: &Tz) -> Result<(), ParseError> {
-        match date {
-            CalDate::Date(day, _) => {
-                validate_system_time(local_tz, day.and_hms_opt(0, 0, 0).unwrap())?;
-                validate_system_time(local_tz, day.and_hms_opt(23, 59, 59).unwrap())?;
-                Ok(())
-            }
-            CalDate::DateTime(dt) => self.validate_datetime(dt, local_tz),
-        }
+        None
     }
 
     fn pseudo_local(&self, dt: &CalDateTime, fallback: &Tz) -> DateTime<Utc> {
@@ -188,11 +176,11 @@ impl CalendarTimeZoneResolver {
         pseudo: DateTime<Utc>,
         tzid: Option<&str>,
         fallback: &Tz,
-    ) -> ResolvedDateTime {
+    ) -> Option<ResolvedDateTime> {
         let local = pseudo.naive_utc();
         match tzid {
-            Some(tzid) => self.resolve_local_or_earlier(tzid, local),
-            None => fixed_from_fallback(fallback, local),
+            Some(tzid) => self.resolve_local_or_earlier_opt(tzid, local),
+            None => fixed_from_fallback_opt(fallback, local),
         }
     }
 
@@ -207,6 +195,20 @@ impl CalendarTimeZoneResolver {
             Some(tzid) => self.localize_in_timezone(instant, tzid),
             None => instant.with_timezone(fallback).naive_local(),
         }
+    }
+
+    /// Returns whether the given local wall-clock time falls into a DST fold in `tzid`.
+    pub fn is_fold_local_time(&self, tzid: &str, local: NaiveDateTime) -> bool {
+        matches!(
+            self.resolve_local(tzid, local),
+            MappedLocalTime::Ambiguous(_, _)
+        )
+    }
+
+    /// Returns whether this instant maps to a folded local time in `tzid`.
+    pub fn instant_is_fold_local_time(&self, instant: ResolvedDateTime, tzid: &str) -> bool {
+        let local = self.localize_in_timezone(instant, tzid);
+        matches!(self.resolve_local(tzid, local), MappedLocalTime::Ambiguous(early, late) if early == instant || late == instant)
     }
 
     fn localize_in_timezone(&self, instant: ResolvedDateTime, tzid: &str) -> NaiveDateTime {
@@ -225,25 +227,33 @@ impl CalendarTimeZoneResolver {
     }
 }
 
-fn validate_system_time(tz: &Tz, local: NaiveDateTime) -> Result<(), ParseError> {
+fn fixed_from_fallback(tz: &Tz, local: NaiveDateTime) -> ResolvedDateTime {
+    fixed_from_fallback_opt(tz, local).unwrap_or_else(|| fixed_from_gap(tz, local))
+}
+
+fn fixed_from_fallback_opt(tz: &Tz, local: NaiveDateTime) -> Option<ResolvedDateTime> {
     match tz.from_local_datetime(&local) {
-        MappedLocalTime::None => Err(ParseError::from(ParseErrorType::NonExistentTime(format!(
-            "{} in {}",
-            local, tz
-        )))),
-        MappedLocalTime::Ambiguous(_, _) => Err(ParseError::from(ParseErrorType::AmbiguousTime(
-            format!("{} in {}", local, tz),
-        ))),
-        MappedLocalTime::Single(_) => Ok(()),
+        MappedLocalTime::Single(dt) => Some(dt.fixed_offset().into()),
+        MappedLocalTime::Ambiguous(early, _) => Some(early.fixed_offset().into()),
+        MappedLocalTime::None => None,
     }
 }
 
-fn fixed_from_fallback(tz: &Tz, local: NaiveDateTime) -> ResolvedDateTime {
-    match tz.from_local_datetime(&local) {
-        MappedLocalTime::Single(dt) => dt.fixed_offset().into(),
-        MappedLocalTime::Ambiguous(early, _) => early.fixed_offset().into(),
-        MappedLocalTime::None => panic!("non-existent local time {local} in {tz}"),
+fn fixed_from_gap(tz: &Tz, local: NaiveDateTime) -> ResolvedDateTime {
+    let mut probe = local;
+    for _ in 0..(48 * 60) {
+        probe -= Duration::minutes(1);
+        match tz.from_local_datetime(&probe) {
+            MappedLocalTime::Single(dt) => {
+                return fixed_datetime(local, *dt.fixed_offset().offset()).into();
+            }
+            MappedLocalTime::Ambiguous(early, _) => {
+                return fixed_datetime(local, *early.fixed_offset().offset()).into();
+            }
+            MappedLocalTime::None => {}
+        }
     }
+    panic!("non-existent local time {local} in {tz}")
 }
 
 fn map_system_time(tz: Tz, local: NaiveDateTime) -> MappedLocalTime<ResolvedDateTime> {
@@ -569,7 +579,8 @@ fn resolve_month_weekday(year: i32, month: u32, desc: &CalWDayDesc) -> Vec<Naive
 
 #[cfg(test)]
 mod tests {
-    use chrono::{NaiveDate, NaiveTime};
+    use chrono::NaiveDate;
+    use chrono_tz::Tz;
 
     use super::*;
 
@@ -577,7 +588,8 @@ mod tests {
     fn observance_byday_without_ordinal_expands_all_matching_weekdays() {
         let dtstart = NaiveDate::from_ymd_opt(2025, 10, 1)
             .unwrap()
-            .and_time(NaiveTime::from_hms_opt(2, 0, 0).unwrap());
+            .and_hms_opt(2, 0, 0)
+            .unwrap();
         let rrule: CalRRule = "FREQ=YEARLY;BYMONTH=10;BYDAY=SU".parse().unwrap();
 
         let starts = expand_observance_rrule(dtstart, &rrule, 2025);
@@ -598,6 +610,46 @@ mod tests {
                     .unwrap()
                     .and_time(dtstart.time()),
             ]
+        );
+    }
+
+    #[test]
+    fn resolve_date_start_uses_pre_gap_offset_for_nonexistent_tzid_time() {
+        let resolver = CalendarTimeZoneResolver::default();
+        let date = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 3, 29)
+                .unwrap()
+                .and_hms_opt(2, 30, 0)
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+
+        let resolved = resolver.resolve_date_start(&date, &Tz::UTC);
+
+        assert_eq!(resolved.to_rfc3339(), "2026-03-29T02:30:00+01:00");
+        assert_eq!(
+            resolved.with_timezone(&Utc).to_rfc3339(),
+            "2026-03-29T01:30:00+00:00"
+        );
+    }
+
+    #[test]
+    fn resolve_date_start_keeps_first_occurrence_for_ambiguous_tzid_time() {
+        let resolver = CalendarTimeZoneResolver::default();
+        let date = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2025, 10, 26)
+                .unwrap()
+                .and_hms_opt(2, 30, 0)
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+
+        let resolved = resolver.resolve_date_start(&date, &Tz::UTC);
+
+        assert_eq!(resolved.to_rfc3339(), "2025-10-26T02:30:00+02:00");
+        assert_eq!(
+            resolved.with_timezone(&Utc).to_rfc3339(),
+            "2025-10-26T00:30:00+00:00"
         );
     }
 }

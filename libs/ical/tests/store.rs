@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use chrono::TimeZone;
-use chrono_tz::{Tz, UTC};
+use chrono_tz::UTC;
 use tempfile::TempDir;
 
 use eventix_ical::col::{CalDir, CalStore, ColError};
@@ -48,7 +48,6 @@ fn two_dir_store(
         tmp_a.path().to_path_buf(),
         "DirA".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     let dir_b = CalDir::new_from_dir(
@@ -56,7 +55,6 @@ fn two_dir_store(
         tmp_b.path().to_path_buf(),
         "DirB".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -141,14 +139,8 @@ fn occurrence_by_id_with_rid_returns_overwrite() {
     // with an overwrite for the second occurrence (rid = 2024-01-08).
     let tmp = TempDir::new().unwrap();
     copy_fixture("recurring_with_overwrite.ics", &tmp);
-    let dir = CalDir::new_from_dir(
-        make_id("dir"),
-        tmp.path().to_path_buf(),
-        "D".into(),
-        false,
-        &Tz::UTC,
-    )
-    .unwrap();
+    let dir =
+        CalDir::new_from_dir(make_id("dir"), tmp.path().to_path_buf(), "D".into(), false).unwrap();
     let mut store = CalStore::default();
     store.add(dir);
 
@@ -226,7 +218,6 @@ fn save_persists_all_dirs() {
         tmp_a.path().to_path_buf(),
         "DirA".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     let dir_b = CalDir::new_from_dir(
@@ -234,7 +225,6 @@ fn save_persists_all_dirs() {
         tmp_b.path().to_path_buf(),
         "DirB".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -265,7 +255,6 @@ fn save_persists_all_dirs() {
         tmp_a.path().to_path_buf(),
         "DirA".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     let reloaded_b = CalDir::new_from_dir(
@@ -273,7 +262,6 @@ fn save_persists_all_dirs() {
         tmp_b.path().to_path_buf(),
         "DirB".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -308,7 +296,6 @@ fn switch_directory_success() {
         tmp_a.path().to_path_buf(),
         "DirA".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     let dir_b = CalDir::new_from_dir(
@@ -316,7 +303,6 @@ fn switch_directory_success() {
         tmp_b.path().to_path_buf(),
         "DirB".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -355,7 +341,6 @@ fn switch_directory_old_dir_not_found() {
         tmp_b.path().to_path_buf(),
         "DirB".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -382,7 +367,6 @@ fn switch_directory_new_dir_not_found_restores_file() {
         tmp_a.path().to_path_buf(),
         "DirA".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
 
@@ -420,7 +404,6 @@ fn switch_directory_save_failure_rolls_back() {
         tmp_a.path().to_path_buf(),
         "DirA".into(),
         false,
-        &Tz::UTC,
     )
     .unwrap();
     let dir_b = CalDir::new_empty(id_b.clone(), nonexistent_path, "DirB".into(), false);

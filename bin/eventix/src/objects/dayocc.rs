@@ -93,8 +93,8 @@ impl<'a> DayOccurrence<'a> {
         date: NaiveDate,
         timezone: &Tz,
     ) -> Vec<DayOccurrence<'occ>> {
-        let day_start = util::resolve_local_time(*timezone, date.and_hms_opt(0, 0, 0).unwrap());
-        let day_end = util::resolve_local_time(*timezone, date.and_hms_opt(23, 59, 59).unwrap());
+        let day_start = util::resolve_local_time(timezone, date.and_hms_opt(0, 0, 0).unwrap());
+        let day_end = util::resolve_local_time(timezone, date.and_hms_opt(23, 59, 59).unwrap());
 
         let mut day_occs = occs
             .iter()

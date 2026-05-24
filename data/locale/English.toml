@@ -19,6 +19,7 @@
 "warning.delete_collection" = "This will permanently delete this collection including all calendars."
 "warning.delete_calendar" = "Removes this calendar from the collection and deletes local data and settings."
 "warning.delete_calendar_remote_folder" = "This will permanently delete this remote calendar and remove its local files and folders."
+"warning.dst_range" = "This range contains at least one time that is ambiguous or does not exist because of a DST transition ({}). If the start or end is ambiguous, the earlier point in time is used. If the start or end does not exist, it is shifted forward accordingly."
 "warning.delete_item" = "This will permanently delete this item."
 "warning.delete_series" = "This will permanently delete this series."
 

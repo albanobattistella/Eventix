@@ -175,7 +175,6 @@ fn action_update(
             &mut comp,
             personal_alarms,
             organizer,
-            &ctx,
             locale,
         )?;
 
@@ -227,15 +226,12 @@ fn action_update(
             if req.mode == EditMode::Series && comp.is_recurrent() {
                 let dtype = comp.ctype().into();
                 let (new_start, new_end) = form.start_end.as_caldates(locale, dtype);
-                let tz: Tz = event_tz
-                    .parse()
-                    .map_err(|_| anyhow!("Invalid timezone: {}", event_tz))?;
                 let should_shift_series =
                     new_start.as_ref() != comp.start() || new_end.as_ref() != comp.end_or_due();
                 if let Some(new_start) = new_start
                     && should_shift_series
                 {
-                    file.change_start(&req.uid, new_start, new_end, &tz)
+                    file.change_series_range(&req.uid, new_start, new_end)
                         .context("Shifting overwrite RIDs failed")?;
                 }
             }
@@ -249,7 +245,6 @@ fn action_update(
                 comp,
                 personal_alarms,
                 organizer,
-                &ctx,
                 locale,
             )?;
             if rid.is_none() {
@@ -268,15 +263,7 @@ fn action_update(
 
             let normalized_rid = file
                 .create_overwrite(&req.uid, rid, &tz, |_, c| {
-                    form.update(
-                        &new_cal,
-                        &alarm_type,
-                        c,
-                        personal_alarms,
-                        organizer,
-                        &ctx,
-                        locale,
-                    )
+                    form.update(&new_cal, &alarm_type, c, personal_alarms, organizer, locale)
                 })
                 .context("Creating overwrite failed")?;
 

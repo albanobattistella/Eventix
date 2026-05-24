@@ -36,8 +36,7 @@ pub fn read_ics_by_uid(cal_dir: &Path, uid: &str) -> CalFile {
         entries
     );
 
-    let tz = chrono_tz::UTC;
-    CalFile::new_from_file(Arc::new(CAL_ID.to_string()), entries[0].clone(), &tz).unwrap()
+    CalFile::new_from_file(Arc::new(CAL_ID.to_string()), entries[0].clone()).unwrap()
 }
 
 /// Asserts that the HTML response body indicates a successful edit (the edit form is re-rendered

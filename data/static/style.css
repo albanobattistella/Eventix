@@ -596,6 +596,10 @@ span.ev_msg_error span.ev_msg_info {
     font-weight: bold;
 }
 
+.ev_warn > i {
+    color: orange;
+}
+
 /* ------------ BOXES ------------ */
 
 .ev_vscrollbox {

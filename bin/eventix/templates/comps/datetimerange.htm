@@ -52,6 +52,77 @@
             return date;
         }
     }
+
+    let requestCounter = 0;
+
+    function warningBox() {
+        return $("#{{ id }}dst_warning");
+    }
+
+    function hideWarning() {
+        warningBox().hide().empty();
+    }
+
+    function showWarning(message) {
+        warningBox()
+            .html(
+                '<div class="ev_warn">' +
+                    '<i class="bi bi-exclamation-circle-fill"></i> ' +
+                    message +
+                    "</div>",
+            )
+            .show();
+    }
+
+    function fetchWarning() {
+        const id = "{{ id }}";
+        if ($("#" + id + "all_day").is(":checked")) {
+            hideWarning();
+            return;
+        }
+
+        let fromDate = $("#" + id + "from_date").val();
+        let fromTime = $("#" + id + "_from__time_").val();
+        let toDate = $("#" + id + "to_date").val();
+        let toTime = $("#" + id + "_to__time_").val();
+        let timezone = $("#" + id + "_timezone_").val();
+
+        if (!fromDate || !fromTime || !toDate || !toTime || !timezone) {
+            hideWarning();
+            return;
+        }
+
+        requestCounter += 1;
+        let current = requestCounter;
+        let params = new URLSearchParams({
+            from_date: fromDate,
+            from_time: fromTime,
+            to_date: toDate,
+            to_time: toTime,
+            timezone: timezone,
+        });
+
+        getRequest("/api/items/dstwarn?" + params.toString(), function (data) {
+            if (current !== requestCounter) return;
+
+            if (!data.warning) {
+                hideWarning();
+                return;
+            }
+
+            showWarning(data.warning);
+        });
+    }
+
+    function initDstWarning(id) {
+        $("#" + id + "from_date").on("change", fetchWarning);
+        $("#" + id + "to_date").on("change", fetchWarning);
+        $("#" + id + "_from__time_").on("change input", fetchWarning);
+        $("#" + id + "_to__time_").on("change input", fetchWarning);
+        $("#" + id + "all_day").on("change", fetchWarning);
+
+        fetchWarning();
+    }
 </script>
 <!-- prettier-ignore-start -->
 <script type="text/javascript">
@@ -63,6 +134,7 @@
             "{{ id }}to_enabled",
             {{ ctype == CalCompType::Todo }},
         );
+        initDstWarning("{{ id }}");
     });
 </script>
 <!-- prettier-ignore-end -->
@@ -140,6 +212,8 @@
     </tr>
 </table>
 
+<div id="{{ id }}dst_warning" style="display: none; padding-top: .5em"></div>
+
 <!-- prettier-ignore-start -->
 <script type="text/javascript">
     $(function () {
@@ -194,6 +268,7 @@
                 if (data.to_date) $("#{{ id }}to_date").val(data.to_date);
                 if (data.to_time) $("#{{ id }}_to__time_").val(data.to_time);
                 previousTz = newTz;
+                fetchWarning();
             });
         });
     });

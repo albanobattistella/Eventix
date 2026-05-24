@@ -56,19 +56,15 @@ impl CalDir {
     /// This method reads all files in the given directory and tries to parse them into a
     /// [`Calendar`]. These are added to the created [`CalDir`]. Note that it only considers files
     /// ending in `.ics`.
-    ///
-    /// After parsing, all component dates are validated against `local_tz`. Components with times
-    /// falling in a DST gap (non-existent) or DST fold (ambiguous) are removed with a warning.
     pub fn new_from_dir(
         id: Arc<String>,
         path: PathBuf,
         name: String,
         read_only: bool,
-        local_tz: &Tz,
     ) -> Result<Self, ColError> {
         let mut files = Vec::new();
         Self::with_files(&path, |filename| {
-            files.push(CalFile::new_from_file(id.clone(), filename, local_tz)?);
+            files.push(CalFile::new_from_file(id.clone(), filename)?);
             Ok(())
         })?;
 
@@ -92,16 +88,13 @@ impl CalDir {
     ///
     /// These files are added to the collection. The method returns `true` if new files were found
     /// and `false` otherwise.
-    ///
-    /// After parsing, all component dates are validated against `local_tz`. Components with times
-    /// falling in a DST gap (non-existent) or DST fold (ambiguous) are removed with a warning.
-    pub fn rescan_for_additions(&mut self, local_tz: &Tz) -> Result<bool, ColError> {
+    pub fn rescan_for_additions(&mut self) -> Result<bool, ColError> {
         let mut seen_changes = false;
         Self::with_files(&self.path, |filename| {
             if !self.files.iter().any(|f| f.path() == &filename) {
                 info!("{}: added file {:?} during rescan", self.id, filename);
                 self.files
-                    .push(CalFile::new_from_file(self.id.clone(), filename, local_tz)?);
+                    .push(CalFile::new_from_file(self.id.clone(), filename)?);
                 seen_changes = true;
             }
             Ok(())
@@ -110,10 +103,7 @@ impl CalDir {
     }
 
     /// Rescans the directory and reloads all files.
-    ///
-    /// After parsing, all component dates are validated against `local_tz`. Components with times
-    /// falling in a DST gap (non-existent) or DST fold (ambiguous) are removed with a warning.
-    pub fn rescan_files(&mut self, local_tz: &Tz) -> Result<bool, ColError> {
+    pub fn rescan_files(&mut self) -> Result<bool, ColError> {
         let mut seen_changes = false;
         Self::with_files(&self.path, |filename| {
             info!("{}: changed file {:?} during rescan", self.id, filename);
@@ -123,7 +113,7 @@ impl CalDir {
                 .find(|f| f.path() == &filename)
                 .ok_or_else(|| ColError::FileNotFound(filename.clone()))?;
             seen_changes = true;
-            file.reload_calendar(local_tz)
+            file.reload_calendar()
         })
         .map(|_| seen_changes)
     }
