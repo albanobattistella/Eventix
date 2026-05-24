@@ -8,6 +8,7 @@ pub mod complete;
 pub mod copy;
 pub mod delete;
 pub mod details;
+pub mod dstwarn;
 pub mod editalarm;
 pub mod occlist;
 pub mod resize;
@@ -28,6 +29,7 @@ pub fn router(state: EventixState) -> Router {
         .merge(copy::router(state.clone()))
         .merge(delete::router(state.clone()))
         .merge(details::router(state.clone()))
+        .merge(dstwarn::router(state.clone()))
         .merge(editalarm::router(state.clone()))
         .merge(resize::router(state.clone()))
         .merge(shift::router(state.clone()))

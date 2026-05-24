@@ -14,6 +14,32 @@ use crate::objects::{
 };
 use crate::util;
 
+/// Indicates whether a local time range contains a DST gap or fold.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DstTransitionKind {
+    Gap,
+    Fold,
+}
+
+/// Describes the earliest DST transition hit contained in a local time range.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DstTransitionHit {
+    kind: DstTransitionKind,
+    local: NaiveDateTime,
+}
+
+impl DstTransitionHit {
+    /// Returns whether the hit is caused by a DST gap or fold.
+    pub fn kind(&self) -> DstTransitionKind {
+        self.kind
+    }
+
+    /// Returns the earliest local wall-clock time inside the range that falls into the gap/fold.
+    pub fn local(&self) -> NaiveDateTime {
+        self.local
+    }
+}
+
 /// Resolves calendar dates and datetimes using embedded `VTIMEZONE` data when available.
 ///
 /// This type is the boundary between unresolved calendar values and concrete instants. It prefers
@@ -209,6 +235,38 @@ impl CalendarTimeZoneResolver {
     pub fn instant_is_fold_local_time(&self, instant: ResolvedDateTime, tzid: &str) -> bool {
         let local = self.localize_in_timezone(instant, tzid);
         matches!(self.resolve_local(tzid, local), MappedLocalTime::Ambiguous(early, late) if early == instant || late == instant)
+    }
+
+    /// Returns the earliest DST gap or fold contained in the half-open local range `[start, end)`.
+    ///
+    /// The returned local time is the earliest wall-clock minute inside the range that is invalid
+    /// (gap) or ambiguous (fold) under the resolver's timezone rules.
+    pub fn first_dst_transition_in_local_range(
+        &self,
+        tzid: &str,
+        start: NaiveDateTime,
+        end: NaiveDateTime,
+    ) -> Option<DstTransitionHit> {
+        if start >= end {
+            return None;
+        }
+
+        let mut probe = start;
+        while probe < end {
+            let kind = match self.resolve_local(tzid, probe) {
+                MappedLocalTime::Single(_) => None,
+                MappedLocalTime::Ambiguous(_, _) => Some(DstTransitionKind::Fold),
+                MappedLocalTime::None => Some(DstTransitionKind::Gap),
+            };
+
+            if let Some(kind) = kind {
+                return Some(DstTransitionHit { kind, local: probe });
+            }
+
+            probe += Duration::minutes(1);
+        }
+
+        None
     }
 
     fn localize_in_timezone(&self, instant: ResolvedDateTime, tzid: &str) -> NaiveDateTime {
@@ -583,6 +641,14 @@ mod tests {
     use chrono_tz::Tz;
 
     use super::*;
+    use crate::objects::Calendar;
+
+    fn dt(y: i32, m: u32, d: u32, hh: u32, mm: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(hh, mm, 0)
+            .unwrap()
+    }
 
     #[test]
     fn observance_byday_without_ordinal_expands_all_matching_weekdays() {
@@ -649,6 +715,102 @@ mod tests {
         assert_eq!(
             resolved.with_timezone(&Utc).to_rfc3339(),
             "2025-10-26T00:30:00+00:00"
+        );
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_detects_gap() {
+        let resolver = CalendarTimeZoneResolver::default();
+
+        let hit = resolver
+            .first_dst_transition_in_local_range(
+                "Europe/Berlin",
+                dt(2026, 3, 29, 1, 30),
+                dt(2026, 3, 29, 3, 30),
+            )
+            .expect("expected DST gap hit");
+
+        assert_eq!(hit.kind(), DstTransitionKind::Gap);
+        assert_eq!(hit.local(), dt(2026, 3, 29, 2, 0));
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_detects_fold() {
+        let resolver = CalendarTimeZoneResolver::default();
+
+        let hit = resolver
+            .first_dst_transition_in_local_range(
+                "Europe/Berlin",
+                dt(2025, 10, 26, 1, 30),
+                dt(2025, 10, 26, 3, 30),
+            )
+            .expect("expected DST fold hit");
+
+        assert_eq!(hit.kind(), DstTransitionKind::Fold);
+        assert_eq!(hit.local(), dt(2025, 10, 26, 2, 0));
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_respects_half_open_end() {
+        let resolver = CalendarTimeZoneResolver::default();
+
+        let hit = resolver.first_dst_transition_in_local_range(
+            "Europe/Berlin",
+            dt(2026, 3, 29, 1, 0),
+            dt(2026, 3, 29, 2, 0),
+        );
+
+        assert_eq!(hit, None);
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_returns_none_without_transition() {
+        let resolver = CalendarTimeZoneResolver::default();
+
+        let hit = resolver.first_dst_transition_in_local_range(
+            "Europe/Berlin",
+            dt(2026, 4, 15, 9, 0),
+            dt(2026, 4, 15, 10, 0),
+        );
+
+        assert_eq!(hit, None);
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_uses_embedded_vtimezone_rules() {
+        let cal: Calendar = "BEGIN:VCALENDAR\n\
+VERSION:2.0\n\
+BEGIN:VTIMEZONE\n\
+TZID:X-CUSTOM-DST\n\
+BEGIN:STANDARD\n\
+DTSTART:20241027T030000\n\
+TZOFFSETFROM:+0200\n\
+TZOFFSETTO:+0100\n\
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\n\
+END:STANDARD\n\
+BEGIN:DAYLIGHT\n\
+DTSTART:20250330T020000\n\
+TZOFFSETFROM:+0100\n\
+TZOFFSETTO:+0200\n\
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\n\
+END:DAYLIGHT\n\
+END:VTIMEZONE\n\
+END:VCALENDAR\n"
+            .parse()
+            .unwrap();
+
+        let hit = cal.timezone_resolver().first_dst_transition_in_local_range(
+            "X-CUSTOM-DST",
+            dt(2025, 3, 30, 1, 30),
+            dt(2025, 3, 30, 3, 30),
+        );
+
+        assert_eq!(
+            hit,
+            Some(DstTransitionHit {
+                kind: DstTransitionKind::Gap,
+                local: dt(2025, 3, 30, 2, 0),
+            })
         );
     }
 }

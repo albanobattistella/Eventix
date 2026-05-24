@@ -47,7 +47,7 @@ pub use status::{CalEventStatus, CalTodoStatus};
 use thiserror::Error;
 pub use timezone::{CalTimeZone, CalTimeZoneObservance, CalTimeZoneObservanceKind, CalUtcOffset};
 pub use todo::CalTodo;
-pub use tzresolver::CalendarTimeZoneResolver;
+pub use tzresolver::{CalendarTimeZoneResolver, DstTransitionHit, DstTransitionKind};
 
 /// Errors that can occur in the objects module.
 #[derive(Debug, Error, Eq, PartialEq)]

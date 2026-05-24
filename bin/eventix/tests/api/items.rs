@@ -140,6 +140,8 @@ mod copy;
 mod delete;
 #[path = "items/details.rs"]
 mod details;
+#[path = "items/dstwarn.rs"]
+mod dstwarn;
 #[path = "items/editalarm.rs"]
 mod editalarm;
 #[path = "items/occlist.rs"]

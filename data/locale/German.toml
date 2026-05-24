@@ -19,6 +19,7 @@
 "warning.delete_collection" = "Löscht diese Gruppe inklusive aller Kalender."
 "warning.delete_calendar" = "Entfernt diesen Kalender aus der Gruppe und löscht die Daten und Einstellungen."
 "warning.delete_calendar_remote_folder" = "Löscht diesen entfernten Kalender dauerhaft und entfernt seine lokalen Dateien und Verzeichnisse."
+"warning.dst_range" = "Dieser Zeitraum enthält mindestens eine Uhrzeit, die aufgrund einer Zeitumstellung mehrdeutig ist oder nicht existiert ({}). Falls Start oder Ende mehrdeutig sind, gilt jeweils der frühere Zeitpunkt. Falls Start oder Ende nicht existiert, wird es entsprechend vorwärts verschoben."
 "warning.delete_item" = "Löscht dieses Element."
 "warning.delete_series" = "Löscht diese Serie."
 
