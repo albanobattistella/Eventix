@@ -182,12 +182,14 @@ async fn shift_local_fold_time_succeeds() {
 
     let ics = read_ics_by_uid(&cal_dir, uid);
     match ics.components()[0].start().unwrap() {
-        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
-            assert_eq!(tzid, "Europe/Berlin");
-            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 10, 25).unwrap());
-            assert_eq!(dt.hour(), 2);
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            assert_eq!(
+                dt.date_naive(),
+                NaiveDate::from_ymd_opt(2026, 10, 25).unwrap()
+            );
+            assert_eq!(dt.hour(), 0);
         }
-        other => panic!("expected timezone DTSTART, got {other:?}"),
+        other => panic!("expected UTC DTSTART, got {other:?}"),
     }
 }
 

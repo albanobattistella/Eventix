@@ -257,12 +257,14 @@ async fn copy_foreign_fold_time_succeeds() {
     )
     .unwrap();
     match copy_ics.components()[0].start().unwrap() {
-        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
-            assert_eq!(tzid, "America/New_York");
-            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 11, 1).unwrap());
-            assert_eq!(dt.hour(), 1);
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            assert_eq!(
+                dt.date_naive(),
+                NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()
+            );
+            assert_eq!(dt.hour(), 5);
         }
-        other => panic!("expected timezone DTSTART, got {other:?}"),
+        other => panic!("expected UTC DTSTART, got {other:?}"),
     }
 }
 

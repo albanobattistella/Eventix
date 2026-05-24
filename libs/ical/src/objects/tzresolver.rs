@@ -197,6 +197,20 @@ impl CalendarTimeZoneResolver {
         }
     }
 
+    /// Returns whether the given local wall-clock time falls into a DST fold in `tzid`.
+    pub fn is_fold_local_time(&self, tzid: &str, local: NaiveDateTime) -> bool {
+        matches!(
+            self.resolve_local(tzid, local),
+            MappedLocalTime::Ambiguous(_, _)
+        )
+    }
+
+    /// Returns whether this instant maps to a folded local time in `tzid`.
+    pub fn instant_is_fold_local_time(&self, instant: ResolvedDateTime, tzid: &str) -> bool {
+        let local = self.localize_in_timezone(instant, tzid);
+        matches!(self.resolve_local(tzid, local), MappedLocalTime::Ambiguous(early, late) if early == instant || late == instant)
+    }
+
     fn localize_in_timezone(&self, instant: ResolvedDateTime, tzid: &str) -> NaiveDateTime {
         if let Some(tz) = self.embedded.get(tzid) {
             // Embedded VTIMEZONE data is compiled into our own transition table, so chrono_tz

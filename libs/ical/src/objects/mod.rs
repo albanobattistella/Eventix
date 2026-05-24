@@ -38,12 +38,23 @@ pub use component::{
 };
 pub use date::{BoundCalDate, CalDate, CalDateTime, CalDateType, DateContext, ResolvedDateTime};
 pub use duration::CalDuration;
-pub use event::CalEvent;
+pub use event::{CalEvent, RangeEdge};
 pub use evlike::{EventLike, UpdatableEventLike};
 pub use locale::{CalLocale, CalLocaleEn};
 pub use organizer::CalOrganizer;
 pub use recur::{CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc, DayDesc, WeekdayHuman};
 pub use status::{CalEventStatus, CalTodoStatus};
+use thiserror::Error;
 pub use timezone::{CalTimeZone, CalTimeZoneObservance, CalTimeZoneObservanceKind, CalUtcOffset};
 pub use todo::CalTodo;
 pub use tzresolver::CalendarTimeZoneResolver;
+
+/// Errors that can occur in the objects module.
+#[derive(Debug, Error, Eq, PartialEq)]
+pub enum ObjectsError {
+    #[error("event has no duration")]
+    MissingDuration,
+
+    #[error("all-day events cannot be resized")]
+    ResizeAllDay,
+}

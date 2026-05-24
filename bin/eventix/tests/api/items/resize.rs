@@ -420,12 +420,15 @@ async fn resize_end_in_local_dst_fold_succeeds() {
 
     let ics = read_ics_by_uid(&cal_dir, uid);
     match ics.components()[0].end_or_due().unwrap() {
-        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
-            assert_eq!(tzid, TEST_LOCALE_TZ);
-            assert_eq!(dt.hour(), 2);
+        CalDate::DateTime(CalDateTime::Utc(dt)) => {
+            assert_eq!(
+                dt.date_naive(),
+                NaiveDate::from_ymd_opt(2026, 10, 25).unwrap()
+            );
+            assert_eq!(dt.hour(), 0);
             assert_eq!(dt.minute(), 30);
         }
-        other => panic!("expected timezone DTEND, got {other:?}"),
+        other => panic!("expected UTC DTEND, got {other:?}"),
     }
 }
 

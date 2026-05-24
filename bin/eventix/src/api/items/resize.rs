@@ -11,7 +11,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use chrono::{Days, NaiveDateTime, NaiveTime};
 use eventix_ical::col::Occurrence;
-use eventix_ical::objects::{CalComponent, CalDate, DateContext, EventLike, UpdatableEventLike};
+use eventix_ical::objects::{CalDate, CalDateTime, EventLike, RangeEdge, UpdatableEventLike};
 use eventix_locale::Locale;
 use eventix_state::EventixState;
 use serde::{Deserialize, Serialize};
@@ -62,14 +62,13 @@ fn half_hour_to_time(hour: u32, minute: u32) -> anyhow::Result<(NaiveTime, bool)
     }
 }
 
-fn get_timespan(
+fn get_resize_op(
     c: &Occurrence<'_>,
     locale: &Arc<dyn Locale + Send + Sync>,
-    ctx: &DateContext,
     req: &Request,
     user_mail: Option<String>,
     resize_start: bool,
-) -> anyhow::Result<(CalDate, CalDate)> {
+) -> anyhow::Result<(RangeEdge, CalDate)> {
     if !c.is_owned_by(user_mail.as_ref()) {
         return Err(anyhow!("No edit permission"));
     }
@@ -85,13 +84,16 @@ fn get_timespan(
     let start_dt = old_start.naive_local();
     let end_dt = old_end.naive_local();
 
-    let (start_dt, end_dt) = if resize_start {
+    if resize_start {
         let (new_time, _) = half_hour_to_time(req.start_hour.unwrap(), req.start_minute.unwrap())?;
         let new_start = NaiveDateTime::new(start_dt.date(), new_time);
         if new_start >= end_dt {
             return Err(anyhow!("New start must be before existing end"));
         }
-        (new_start, end_dt)
+        Ok((
+            RangeEdge::Start,
+            CalDate::DateTime(CalDateTime::Timezone(new_start, tz.name().to_string())),
+        ))
     } else {
         let (new_time, next_day) =
             half_hour_to_time(req.end_hour.unwrap(), req.end_minute.unwrap())?;
@@ -118,20 +120,11 @@ fn get_timespan(
         if new_end <= start_dt {
             return Err(anyhow!("New end must be after existing start"));
         }
-        (start_dt, new_end)
-    };
-
-    let convert_tz = |dt: &NaiveDateTime| -> anyhow::Result<CalDate> {
-        let fixed = CalDate::resolve_local_datetime(*dt, tz).map_err(anyhow::Error::from)?;
-        c.start()
-            .unwrap()
-            .from_resolved_in_tz(fixed, tz, ctx.resolver())
-            .map_err(|e| anyhow!("No such date in calendar timezone: {e:?}"))
-    };
-
-    let new_start = convert_tz(&start_dt)?;
-    let new_end = convert_tz(&end_dt)?;
-    Ok((new_start, new_end))
+        Ok((
+            RangeEdge::End,
+            CalDate::DateTime(CalDateTime::Timezone(new_end, tz.name().to_string())),
+        ))
+    }
 }
 
 pub async fn handler(
@@ -175,23 +168,20 @@ async fn run_resize(
         .context(format!("Unable to find component with uid '{}'", req.uid))?;
     let ctx = file.calendar().date_context();
 
-    let complete = |start: CalDate, end: CalDate, c: &mut CalComponent| -> anyhow::Result<()> {
-        c.set_start(Some(start));
-        c.as_event_mut().unwrap().set_end(Some(end));
-        c.touch();
-        Ok(())
-    };
-
     // determine new start/end based on the to-be-resized occurrence
     let occ = file
         .occurrence_by_id(&req.uid, req.rid.as_ref(), locale.timezone())
         .ok_or_else(|| anyhow!("Occurrence for {} at {:?} not found", req.uid, req.rid))?;
-    let (start, end) = get_timespan(&occ, &locale, &ctx, &req, user_mail, resize_start)?;
+    let (edge, new_value) = get_resize_op(&occ, &locale, &req, user_mail, resize_start)?;
 
     if let Some(comp) =
         file.component_with_mut(|c| c.uid() == &req.uid && c.rid() == req.rid.as_ref())
     {
-        complete(start, end, comp)?;
+        comp.as_event_mut()
+            .unwrap()
+            .resize(&ctx, edge, new_value, locale.timezone())
+            .map_err(anyhow::Error::from)?;
+        comp.touch();
     } else {
         let comp = file.component_with(|c| c.uid() == &req.uid).unwrap();
         if !comp.is_recurrent() {
@@ -202,7 +192,14 @@ async fn run_resize(
             &req.uid,
             req.rid.clone().unwrap(),
             locale.timezone(),
-            |_base, comp| complete(start, end, comp),
+            |_base, comp| {
+                comp.as_event_mut()
+                    .unwrap()
+                    .resize(&ctx, edge, new_value, locale.timezone())
+                    .map_err(anyhow::Error::from)?;
+                comp.touch();
+                Ok::<(), anyhow::Error>(())
+            },
         )
         .context("Creating overwrite failed")?;
     }

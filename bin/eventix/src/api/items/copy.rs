@@ -7,9 +7,9 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
-use chrono::{NaiveDateTime, NaiveTime, TimeDelta, Timelike};
+use chrono::{NaiveDateTime, NaiveTime, Timelike};
 use eventix_ical::col::CalFile;
-use eventix_ical::objects::{CalDate, EventLike, UpdatableEventLike};
+use eventix_ical::objects::{CalDate, CalDateTime, EventLike, UpdatableEventLike};
 use eventix_state::EventixState;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -69,27 +69,16 @@ async fn run_copy(
             return Err(anyhow!("Copying recurrent events is not supported"));
         }
 
-        let duration = comp
-            .wallclock_duration()
-            .ok_or_else(|| anyhow!("Event has no duration"))?;
         let ctx = file.calendar().date_context();
         let old_start = comp
             .start()
             .ok_or_else(|| anyhow!("Event has no start date"))?
-            .as_start_with_resolver(tz, ctx.resolver())
+            .as_start_with_resolver(tz, file.calendar().timezone_resolver())
             .with_timezone(tz);
 
-        let (new_start, new_end) = if comp.is_all_day() {
-            // add one second here as the duration for all-day events is one second less to stay on
-            // the same day.
-            let end = new_date + (duration + TimeDelta::seconds(1));
-            (
-                CalDate::Date(new_date, comp.ctype().into()),
-                CalDate::Date(end, comp.ctype().into()),
-            )
+        let new_start = if comp.is_all_day() {
+            CalDate::Date(new_date, comp.ctype().into())
         } else {
-            let source_start = comp.start().unwrap();
-            let source_end = comp.end_or_due().unwrap();
             let new_time = if let Some(hour) = req.hour {
                 NaiveTime::from_hms_opt(hour, old_start.minute(), old_start.second())
                     .ok_or_else(|| anyhow!("Invalid hour"))?
@@ -97,24 +86,15 @@ async fn run_copy(
                 old_start.time()
             };
             let start = NaiveDateTime::new(new_date, new_time);
-            let end = start + duration;
-            let start_instant =
-                CalDate::resolve_local_datetime(start, tz).map_err(anyhow::Error::from)?;
-            let end_instant =
-                CalDate::resolve_local_datetime(end, tz).map_err(anyhow::Error::from)?;
-            (
-                source_start
-                    .from_resolved_in_tz(start_instant, tz, ctx.resolver())
-                    .map_err(anyhow::Error::from)?,
-                source_end
-                    .from_resolved_in_tz(end_instant, tz, ctx.resolver())
-                    .map_err(anyhow::Error::from)?,
-            )
+            CalDate::DateTime(CalDateTime::Timezone(start, tz.name().to_string()))
         };
 
         let mut new_comp = comp.clone();
-        new_comp.set_start(Some(new_start));
-        new_comp.as_event_mut().unwrap().set_end(Some(new_end));
+        new_comp
+            .as_event_mut()
+            .unwrap()
+            .shift_to(&ctx, new_start, tz)
+            .map_err(anyhow::Error::from)?;
 
         let mut cal = file.calendar().clone();
         cal.delete_components(|_| true);
