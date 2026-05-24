@@ -67,11 +67,29 @@ impl<'a, 'r> OccurrenceIterator<'a, 'r> {
         let (base, date_iter) = self.dates.as_mut()?;
         let resolver = self.file.cal.timezone_resolver();
         for (ty, d, excluded) in date_iter {
-            let mut occ = Occurrence::new_single_in_tz(
+            let start = if ty == CompDateType::Start {
+                Some(d)
+            } else {
+                None
+            };
+            let end = if ty == CompDateType::EndOrDue {
+                Some(d)
+            } else if !base.is_recurrent() {
+                // since the iterator only gives us a single date, we retrieve the now missing end
+                // again from the base component here. this is required to ensure that the
+                // occurrence end is correct in case the start is in a DST gap. note that this not
+                // necessary for the start above, because we keep the start as soon as it's present
+                // and thus only potentially lose the end.
+                base.end_or_due()
+                    .map(|d| d.as_end_with_resolver(&self.start.timezone(), resolver))
+            } else {
+                None
+            };
+            let mut occ = Occurrence::new_in_tz(
                 self.file.dir.clone(),
                 base,
-                ty,
-                d,
+                start,
+                end,
                 excluded,
                 self.start.timezone(),
             );
@@ -2031,6 +2049,35 @@ END:VCALENDAR";
             .unwrap();
         assert_eq!(occ.occurrence_end(), Some(end));
         assert_eq!(occ.wallclock_duration(), Some(Duration::hours(2)));
+    }
+
+    #[test]
+    fn occurrences_have_correct_end_when_dtstart_is_in_dst_gap() {
+        let ics = "BEGIN:VCALENDAR\n\
+BEGIN:VEVENT\n\
+DTEND;TZID=Europe/Berlin:20260329T043000\n\
+UID:gap-uid\n\
+DTSTART;TZID=Europe/Berlin:20260329T023000\n\
+SUMMARY:gap\n\
+END:VEVENT\n\
+END:VCALENDAR";
+
+        let cal = ics.parse().unwrap();
+        let file = CalFile::new_simple(cal);
+
+        let occs: Vec<_> = file
+            .occurrences_between(new_date(2026, 3, 29), new_date(2026, 3, 30), |_| true)
+            .collect();
+
+        assert_eq!(occs.len(), 1);
+        assert_eq!(
+            occs[0].occurrence_start(),
+            Some(new_datetime(2026, 3, 29, 3, 30, 0))
+        );
+        assert_eq!(
+            occs[0].occurrence_end(),
+            Some(new_datetime(2026, 3, 29, 4, 30, 0))
+        );
     }
 
     #[test]
