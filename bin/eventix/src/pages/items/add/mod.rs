@@ -12,7 +12,7 @@ use axum::{
 };
 use chrono::{Duration, NaiveDateTime, NaiveTime, Timelike, Utc};
 use chrono_tz::Tz;
-use eventix_ical::objects::CalCompType;
+use eventix_ical::{objects::CalCompType, util};
 use eventix_state::EventixState;
 use serde::{Deserialize, Serialize};
 
@@ -59,10 +59,7 @@ impl CompNew {
             } else {
                 now.time()
             };
-            NaiveDateTime::new(date.date().unwrap(), time)
-                .and_local_timezone(*timezone)
-                .earliest()
-                .unwrap()
+            util::resolve_local_time(timezone, NaiveDateTime::new(date.date().unwrap(), time))
         } else {
             now
         };
