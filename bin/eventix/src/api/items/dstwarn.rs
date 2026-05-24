@@ -8,7 +8,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use eventix_ical::objects::CalendarTimeZoneResolver;
+use eventix_ical::util::first_dst_transition_in_local_range;
 use eventix_state::EventixState;
 use formatx::formatx;
 use serde::{Deserialize, Serialize};
@@ -70,12 +70,15 @@ async fn handler(
     };
 
     let locale = state.lock().await.locale();
-    let resolver = CalendarTimeZoneResolver::default();
-    let hit = resolver.first_dst_transition_in_local_range(&req.timezone, start, end);
+    let hit = req
+        .timezone
+        .parse()
+        .ok()
+        .and_then(|tz| first_dst_transition_in_local_range(&tz, start, end));
 
     Ok(Json(Response {
-        warning: hit.map(|hit| {
-            let local = hit.local().format("%Y-%m-%d %H:%M").to_string();
+        warning: hit.map(|local| {
+            let local = local.format("%Y-%m-%d %H:%M").to_string();
             formatx!(locale.translate("warning.dst_range"), local).unwrap()
         }),
     }))

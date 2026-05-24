@@ -11,13 +11,18 @@ use std::{
 
 use formatx::formatx;
 
-use chrono::{DateTime, Datelike, Duration, MappedLocalTime, NaiveDate, TimeZone, Weekday};
+use chrono::{
+    DateTime, Datelike, Duration, MappedLocalTime, NaiveDate, NaiveDateTime, TimeZone, Timelike,
+    Weekday,
+};
 use chrono_tz::Tz;
 
 use crate::{
     objects::CalLocale,
     parser::{LineReader, ParseError, ParseErrorType, Property},
 };
+
+const DST_TRANSITION_SCAN_STEP_MINUTES: i64 = 15;
 
 /// Returns the part after a `mailto:` URI scheme, matched ASCII-case-insensitively.
 pub fn strip_mailto_prefix(address: &str) -> Option<&str> {
@@ -69,6 +74,75 @@ pub fn resolve_local_time(tz: &Tz, naive: chrono::NaiveDateTime) -> DateTime<Tz>
             }
         }
     }
+}
+
+/// Returns the earliest local wall-clock minute in `[start, end)` that is invalid or ambiguous.
+pub fn first_dst_transition_in_local_range(
+    tz: &Tz,
+    start: NaiveDateTime,
+    end: NaiveDateTime,
+) -> Option<NaiveDateTime> {
+    if start >= end {
+        return None;
+    }
+
+    if is_dst_transition_local_time(tz, start) {
+        return Some(start);
+    }
+
+    let mut previous_probe = start;
+    let mut probe = round_up_to_local_step(start, DST_TRANSITION_SCAN_STEP_MINUTES);
+    while probe < end {
+        if is_dst_transition_local_time(tz, probe) {
+            return first_dst_transition_in_local_subrange(
+                tz,
+                previous_probe + Duration::minutes(1),
+                probe + Duration::minutes(1),
+            );
+        }
+
+        previous_probe = probe;
+        probe += Duration::minutes(DST_TRANSITION_SCAN_STEP_MINUTES);
+    }
+
+    None
+}
+
+fn first_dst_transition_in_local_subrange(
+    tz: &Tz,
+    start: NaiveDateTime,
+    end: NaiveDateTime,
+) -> Option<NaiveDateTime> {
+    let mut probe = start;
+    while probe < end {
+        if is_dst_transition_local_time(tz, probe) {
+            return Some(probe);
+        }
+
+        probe += Duration::minutes(1);
+    }
+
+    None
+}
+
+fn is_dst_transition_local_time(tz: &Tz, local: NaiveDateTime) -> bool {
+    !matches!(tz.from_local_datetime(&local), MappedLocalTime::Single(_))
+}
+
+fn round_up_to_local_step(local: NaiveDateTime, step_minutes: i64) -> NaiveDateTime {
+    let minute = i64::from(local.minute());
+    let remainder = minute.rem_euclid(step_minutes);
+    let mut rounded = local
+        .with_second(0)
+        .and_then(|local| local.with_nanosecond(0))
+        .unwrap();
+
+    if remainder == 0 {
+        return rounded;
+    }
+
+    rounded += Duration::minutes(step_minutes - remainder);
+    rounded
 }
 
 /// Returns true if the given date ranges overlap.
@@ -394,7 +468,14 @@ pub fn ignore_until_end<R: BufRead>(
 mod tests {
     use super::*;
 
-    use chrono::TimeZone;
+    use chrono::{NaiveDateTime, TimeZone};
+
+    fn dt(y: i32, m: u32, d: u32, hh: u32, mm: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(hh, mm, 0)
+            .unwrap()
+    }
 
     #[test]
     fn mailto_helpers_are_ascii_case_insensitive() {
@@ -492,6 +573,50 @@ mod tests {
         assert_eq!(result.month(), 3);
         assert_eq!(result.hour(), 3);
         assert_eq!(result.minute(), 0);
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_detects_gap() {
+        let hit = first_dst_transition_in_local_range(
+            &chrono_tz::Australia::Lord_Howe,
+            dt(2026, 10, 4, 1, 45),
+            dt(2026, 10, 4, 3, 0),
+        );
+
+        assert_eq!(hit, Some(dt(2026, 10, 4, 2, 0)));
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_detects_fold() {
+        let hit = first_dst_transition_in_local_range(
+            &chrono_tz::Pacific::Chatham,
+            dt(2025, 4, 6, 2, 30),
+            dt(2025, 4, 6, 4, 0),
+        );
+
+        assert_eq!(hit, Some(dt(2025, 4, 6, 2, 45)));
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_respects_half_open_end() {
+        let hit = first_dst_transition_in_local_range(
+            &chrono_tz::Australia::Lord_Howe,
+            dt(2026, 10, 4, 1, 0),
+            dt(2026, 10, 4, 2, 0),
+        );
+
+        assert_eq!(hit, None);
+    }
+
+    #[test]
+    fn first_dst_transition_in_local_range_returns_none_without_transition() {
+        let hit = first_dst_transition_in_local_range(
+            &chrono_tz::Pacific::Chatham,
+            dt(2026, 5, 15, 9, 0),
+            dt(2026, 5, 15, 10, 0),
+        );
+
+        assert_eq!(hit, None);
     }
 
     #[test]

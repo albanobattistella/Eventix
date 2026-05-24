@@ -20,9 +20,9 @@ async fn returns_gap_hit_for_range_spanning_spring_forward() {
     let router = make_router(state);
 
     let uri = "/api/items/dstwarn\
-               ?from_date=2026-03-29&from_time=01:30\
-               &to_date=2026-03-29&to_time=03:30\
-               &timezone=Europe%2FBerlin";
+               ?from_date=2026-10-04&from_time=01:45\
+               &to_date=2026-10-04&to_time=03:00\
+               &timezone=Australia%2FLord_Howe";
     let (status, body) = get(router, uri).await;
     assert_eq!(status, 200);
 
@@ -31,7 +31,7 @@ async fn returns_gap_hit_for_range_spanning_spring_forward() {
         json["warning"]
             .as_str()
             .unwrap()
-            .contains("DST transition (2026-03-29 02:00)")
+            .contains("DST transition (2026-10-04 02:00)")
     );
 }
 
@@ -45,9 +45,9 @@ async fn returns_fold_hit_for_range_spanning_fall_back() {
     let router = make_router(state);
 
     let uri = "/api/items/dstwarn\
-               ?from_date=2025-10-26&from_time=01:30\
-               &to_date=2025-10-26&to_time=03:30\
-               &timezone=Europe%2FBerlin";
+               ?from_date=2025-04-06&from_time=02:30\
+               &to_date=2025-04-06&to_time=04:00\
+               &timezone=Pacific%2FChatham";
     let (status, body) = get(router, uri).await;
     assert_eq!(status, 200);
 
@@ -56,7 +56,7 @@ async fn returns_fold_hit_for_range_spanning_fall_back() {
         json["warning"]
             .as_str()
             .unwrap()
-            .contains("DST transition (2025-10-26 02:00)")
+            .contains("DST transition (2025-04-06 02:45)")
     );
 }
 
@@ -70,9 +70,9 @@ async fn returns_null_without_transition() {
     let router = make_router(state);
 
     let uri = "/api/items/dstwarn\
-               ?from_date=2026-04-15&from_time=09:00\
-               &to_date=2026-04-15&to_time=10:00\
-               &timezone=Europe%2FBerlin";
+               ?from_date=2026-05-15&from_time=09:00\
+               &to_date=2026-05-15&to_time=10:00\
+               &timezone=Pacific%2FChatham";
     let (status, body) = get(router, uri).await;
     assert_eq!(status, 200);
 
