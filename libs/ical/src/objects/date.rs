@@ -635,7 +635,7 @@ impl CalDateTime {
     /// instance for that date.
     fn from_local_as_utc(local: NaiveDateTime, tz: &Tz) -> Result<Self, ParseError> {
         Ok(Self::Utc(
-            util::resolve_local_time(*tz, local).with_timezone(&Utc),
+            util::resolve_local_time(tz, local).with_timezone(&Utc),
         ))
     }
 

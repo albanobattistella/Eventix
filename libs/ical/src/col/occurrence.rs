@@ -303,7 +303,7 @@ impl<'c> Occurrence<'c> {
                         .map(|tz| {
                             let start_local = start.with_timezone(&tz).naive_local();
                             ResolvedDateTime::from(
-                                util::resolve_local_time(tz, start_local + d).fixed_offset(),
+                                util::resolve_local_time(&tz, start_local + d).fixed_offset(),
                             )
                         })
                         .unwrap_or(start + d),

@@ -51,7 +51,7 @@ pub fn mail_addresses_match(left: &str, right: &str) -> bool {
 /// spring-forward gap), walks forward in one-minute increments from the
 /// requested time until a valid local time is found (i.e., snaps to the
 /// earliest moment after the gap).
-pub fn resolve_local_time(tz: Tz, naive: chrono::NaiveDateTime) -> DateTime<Tz> {
+pub fn resolve_local_time(tz: &Tz, naive: chrono::NaiveDateTime) -> DateTime<Tz> {
     match tz.from_local_datetime(&naive) {
         MappedLocalTime::Single(dt) => dt,
         MappedLocalTime::Ambiguous(early, _) => early,
@@ -154,7 +154,7 @@ pub fn week_start(date: DateTime<Tz>, first_day: Option<Weekday>) -> DateTime<Tz
         let naive_dt = NaiveDate::from_ymd_opt(date.year(), date.month(), date.day() - day_of_week)
             .unwrap()
             .and_time(date.time());
-        resolve_local_time(date.timezone(), naive_dt)
+        resolve_local_time(&date.timezone(), naive_dt)
     } else {
         let (pyear, pmonth) = prev_month(date.year(), date.month());
         let days = month_days(pyear, pmonth);
@@ -162,7 +162,7 @@ pub fn week_start(date: DateTime<Tz>, first_day: Option<Weekday>) -> DateTime<Tz
         let naive_dt = NaiveDate::from_ymd_opt(pyear, pmonth, day)
             .unwrap()
             .and_time(date.time());
-        resolve_local_time(date.timezone(), naive_dt)
+        resolve_local_time(&date.timezone(), naive_dt)
     }
 }
 
@@ -181,14 +181,14 @@ pub fn week_end(date: DateTime<Tz>, first_day: Option<Weekday>) -> DateTime<Tz> 
         let naive_dt = NaiveDate::from_ymd_opt(date.year(), date.month(), date.day() + diff)
             .unwrap()
             .and_time(date.time());
-        resolve_local_time(date.timezone(), naive_dt)
+        resolve_local_time(&date.timezone(), naive_dt)
     } else {
         let (nyear, nmonth) = next_month(date.year(), date.month());
         let day = diff - (days - date.day());
         let naive_dt = NaiveDate::from_ymd_opt(nyear, nmonth, day)
             .unwrap()
             .and_time(date.time());
-        resolve_local_time(date.timezone(), naive_dt)
+        resolve_local_time(&date.timezone(), naive_dt)
     }
 }
 
