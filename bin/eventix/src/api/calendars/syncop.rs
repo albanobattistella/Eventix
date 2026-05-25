@@ -78,22 +78,22 @@ async fn run_syncop(state: EventixState, req: Request) -> anyhow::Result<SyncRes
         Operation::ReloadCollection { col_id } => {
             EventixAppState::reload_collection(&state, &col_id, req.auth_url.as_ref())
                 .await
-                .context(format!("Unable to reload collection {}", col_id))
+                .context(format!("Unable to reload collection '{}'", col_id))
         }
         Operation::ReloadCalendar { col_id, cal_id } => {
             EventixAppState::reload_calendar(&state, &col_id, &cal_id, req.auth_url.as_ref())
                 .await
-                .context(format!("Unable to reload calendar {}:{}", col_id, cal_id))
+                .context(format!("Unable to reload calendar '{}:{}'", col_id, cal_id))
         }
         Operation::SyncCollection { col_id } => {
             EventixAppState::sync_collection(&state, &col_id, req.auth_url.as_ref())
                 .await
-                .context(format!("Unable to sync collection {}", col_id))
+                .context(format!("Unable to sync collection '{}'", col_id))
         }
         Operation::DiscoverCollection { col_id } => {
             EventixAppState::discover_collection(&state, &col_id, req.auth_url.as_ref())
                 .await
-                .context(format!("Unable to discover collection {}", col_id))
+                .context(format!("Unable to discover collection '{}'", col_id))
         }
     }?;
     Ok(sync_res)

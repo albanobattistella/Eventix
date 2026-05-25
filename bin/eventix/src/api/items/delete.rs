@@ -48,7 +48,7 @@ async fn run_delete(
         .directory_mut(&src)
         .map_err(anyhow::Error::from)?
         .delete_by_uid(&form.uid)
-        .with_context(|| format!("Unable to delete item with uid {}", form.uid))?;
+        .with_context(|| format!("Unable to delete item with uid '{}'", form.uid))?;
 
     Ok(Json(Response {}))
 }

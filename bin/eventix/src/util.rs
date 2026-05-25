@@ -65,7 +65,7 @@ pub fn user_for_uid(state: &State, uid: &String) -> anyhow::Result<Option<EmailA
     let file = state
         .store()
         .file_by_id(uid)
-        .ok_or_else(|| anyhow!("Unable to find file with uid {}", uid))?;
+        .ok_or_else(|| anyhow!("Unable to find file with uid '{}'", uid))?;
 
     Ok(state
         .settings()

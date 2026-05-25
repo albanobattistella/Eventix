@@ -46,7 +46,7 @@ async fn handler(
         .settings()
         .collections()
         .get(&req.col_id)
-        .ok_or_else(|| anyhow!("No collection with id {}", req.col_id))?;
+        .ok_or_else(|| anyhow!("No collection '{}'", req.col_id))?;
 
     let cal = col
         .all_calendars()

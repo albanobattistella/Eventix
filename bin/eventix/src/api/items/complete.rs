@@ -69,7 +69,7 @@ async fn run_complete(
     } else {
         let comp = file.component_with(|c| c.uid() == &req.uid).unwrap();
         if !comp.is_recurrent() {
-            return Err(anyhow!("Component {} is not recurrent", req.uid));
+            return Err(anyhow!("Component '{}' is not recurrent", req.uid));
         }
 
         file.create_overwrite(
@@ -80,8 +80,10 @@ async fn run_complete(
         )
         .context("Creating overwrite failed")?;
     }
-    file.save()
-        .context(format!("Save file {}:{:?}", req.uid, req.rid))?;
+    file.save().context(format!(
+        "Unable to save item with uid '{}' and rid '{:?}'",
+        req.uid, req.rid
+    ))?;
 
     Ok(Json(Response {}))
 }
