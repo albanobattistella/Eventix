@@ -39,7 +39,6 @@ fn base_fs_fields<'a>(name: &'a str, fs_path: &'a str) -> Vec<(&'static str, &'a
         ("syncer[vdir_time_span_years]", "5"),
         ("syncer[o365_name]", ""),
         ("syncer[o365_email]", ""),
-        ("syncer[o365_pw][password]", ""),
         ("syncer[o365_time_span]", "infinite"),
         ("syncer[o365_time_span_years]", "5"),
     ]
@@ -59,7 +58,6 @@ fn base_vdir_fields(name: &str) -> Vec<(&'static str, &str)> {
         ("syncer[fs_path]", ""),
         ("syncer[o365_name]", ""),
         ("syncer[o365_email]", ""),
-        ("syncer[o365_pw][password]", ""),
         ("syncer[o365_time_span]", "infinite"),
         ("syncer[o365_time_span_years]", "5"),
     ]
@@ -71,7 +69,6 @@ fn base_o365_fields(name: &str) -> Vec<(&'static str, &str)> {
         ("syncer[syncer]", "O365"),
         ("syncer[o365_name]", "Bob"),
         ("syncer[o365_email]", "bob@example.com"),
-        ("syncer[o365_pw][password]", "secret"),
         ("syncer[o365_time_span]", "infinite"),
         ("syncer[o365_time_span_years]", "5"),
         ("syncer[fs_path]", ""),
