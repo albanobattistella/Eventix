@@ -246,6 +246,67 @@ async fn shift_recurring_foreign_gap_occurrence_succeeds() {
     }
 }
 
+#[tokio::test]
+async fn shift_recurring_foreign_occurrence_converts_user_local_rid_to_event_timezone() {
+    let tmp = TempDir::new().unwrap();
+    let cal_dir = tmp.path().join(CAL_ID);
+    std::fs::create_dir_all(&cal_dir).unwrap();
+    let uid = "shift-recurring-foreign-rid";
+    std::fs::write(
+        cal_dir.join(format!("{uid}.ics")),
+        format!(
+            "BEGIN:VCALENDAR\r\n\
+             BEGIN:VEVENT\r\n\
+             UID:{uid}\r\n\
+             DTSTAMP:20260101T000000Z\r\n\
+             DTSTART;TZID=America/New_York:20260307T023000\r\n\
+             DTEND;TZID=America/New_York:20260307T033000\r\n\
+             RRULE:FREQ=DAILY;COUNT=3\r\n\
+             SUMMARY:Recurring foreign rid\r\n\
+             END:VEVENT\r\n\
+             END:VCALENDAR\r\n"
+        ),
+    )
+    .unwrap();
+    let state = make_state_in_tz(&cal_dir, "Europe/Berlin");
+    let router = make_router(state);
+
+    let qs = encode_form(&[
+        ("uid", uid),
+        ("rid", "TTEurope/Berlin;2026-03-07T08:30:00"),
+        ("date", "2026-03-08"),
+    ]);
+    let (status, _) = post_query(router, &format!("/api/items/shift?{qs}")).await;
+    assert_eq!(status, 200);
+
+    let ics = read_ics_by_uid(&cal_dir, uid);
+    let override_comp = ics
+        .components()
+        .iter()
+        .find(|c| c.rid().is_some())
+        .expect("expected RECURRENCE-ID override");
+
+    match override_comp.rid().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "America/New_York");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 3, 7).unwrap());
+            assert_eq!(dt.hour(), 2);
+            assert_eq!(dt.minute(), 30);
+        }
+        other => panic!("expected timezone RECURRENCE-ID, got {other:?}"),
+    }
+
+    match override_comp.start().unwrap() {
+        CalDate::DateTime(CalDateTime::Timezone(dt, tzid)) => {
+            assert_eq!(tzid, "America/New_York");
+            assert_eq!(dt.date(), NaiveDate::from_ymd_opt(2026, 3, 8).unwrap());
+            assert_eq!(dt.hour(), 3);
+            assert_eq!(dt.minute(), 30);
+        }
+        other => panic!("expected timezone DTSTART, got {other:?}"),
+    }
+}
+
 /// Shifting a specific occurrence of a recurring event creates a RECURRENCE-ID override.
 #[tokio::test]
 async fn shift_recurring_occurrence_creates_override() {

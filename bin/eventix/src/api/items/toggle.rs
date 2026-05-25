@@ -47,6 +47,14 @@ async fn run_toggle(
         .file_by_id_mut(&form.uid)
         .context(format!("Unable to find component with uid '{}'", form.uid))?;
 
+    let base_start = file
+        .component_with(|c| c.rid().is_none() && c.uid() == &form.uid)
+        .and_then(|c| c.start().cloned())
+        .ok_or_else(|| anyhow!("Unable to find base component with uid {}", form.uid))?;
+    let exdate = form
+        .rid
+        .normalize_to(&base_start, file.calendar().timezone_resolver());
+
     let base = file
         .component_with_mut(|c| c.rid().is_none() && c.uid() == &form.uid)
         .ok_or_else(|| anyhow!("Unable to find base component with uid {}", form.uid))?;
@@ -55,7 +63,6 @@ async fn run_toggle(
         return Err(anyhow!("No edit permission"));
     }
 
-    let exdate = form.rid.normalize_to(base.start().unwrap());
     base.toggle_exclude(exdate);
     base.touch();
     file.save()
