@@ -30,7 +30,7 @@ async fn action_update(
     let cols = state.settings_mut().collections_mut();
     let col = cols
         .get_mut(&req.col_id)
-        .ok_or_else(|| anyhow!("No collection {}", req.col_id))?;
+        .ok_or_else(|| anyhow!("No collection '{}'", req.col_id))?;
 
     let syncer = form.syncer.to_syncer(Some(col.syncer())).await?;
     if discriminant(&syncer) != discriminant(col.syncer()) {

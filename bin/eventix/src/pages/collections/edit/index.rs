@@ -55,7 +55,7 @@ pub async fn content_with(
             .settings()
             .collections()
             .get(&req.col_id)
-            .ok_or_else(|| anyhow!("No collection with id {}", req.col_id))?;
+            .ok_or_else(|| anyhow!("No collection '{}'", req.col_id))?;
         Form::new_from(col)
     };
 

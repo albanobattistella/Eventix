@@ -118,9 +118,10 @@ async fn run_copy(
     cal.add_component(new_comp);
     cal.populate_timezones();
     let new_file = CalFile::new(dir.clone(), path, cal);
-    new_file
-        .save()
-        .context(format!("Save copy of {} as {}", req.uid, new_uid))?;
+    new_file.save().context(format!(
+        "Unable to save copy of item with uid '{}' as '{}'",
+        req.uid, new_uid
+    ))?;
 
     dir_arc.add_file(new_file).map_err(anyhow::Error::from)?;
 

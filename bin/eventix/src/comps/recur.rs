@@ -6,7 +6,8 @@ use anyhow::anyhow;
 use askama::Template;
 use chrono::Weekday;
 use eventix_ical::objects::{
-    CalDate, CalDateTime, CalDateType, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc, DayDesc,
+    CalDate, CalDateTime, CalDateType, CalRRule, CalRRuleFreq, CalRRuleSide, CalWDayDesc,
+    CalendarTimeZoneResolver, DayDesc,
 };
 use eventix_locale::Locale;
 use serde::{Deserialize, Deserializer};
@@ -567,7 +568,7 @@ impl RecurRequest {
                             .ok_or_else(|| anyhow!("Please specify a valid end date"))?;
                         let until_date = match start {
                             CalDate::Date(_, _) | CalDate::DateTime(CalDateTime::Floating(_)) => {
-                                date.normalize_to(start)
+                                date.normalize_to(start, &CalendarTimeZoneResolver::default())
                             }
                             // RFC 5545 demands UTC for CalDateTime::Timezone and CalDateTime::Utc
                             _ => date.to_utc(),

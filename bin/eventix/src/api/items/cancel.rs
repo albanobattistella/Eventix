@@ -47,7 +47,7 @@ async fn run_cancel(
     let rid = req
         .rid
         .parse::<CalDate>()
-        .context(format!("Invalid rid date: {}", req.rid))?;
+        .context(format!("Invalid rid date: '{}'", req.rid))?;
 
     let file = state
         .store_mut()
@@ -85,7 +85,7 @@ async fn run_cancel(
     } else {
         let comp = file.component_with(|c| c.uid() == &req.uid).unwrap();
         if !comp.is_recurrent() {
-            return Err(anyhow!("Component {} is not recurrent", req.uid));
+            return Err(anyhow!("Component '{}' is not recurrent", req.uid));
         }
         checks(comp)?;
 
@@ -94,8 +94,10 @@ async fn run_cancel(
         })
         .context("Creating overwrite failed")?;
     }
-    file.save()
-        .context(format!("Save file {}:{:?}", req.uid, req.rid))?;
+    file.save().context(format!(
+        "Unable to save item with uid '{}' and rid '{:?}'",
+        req.uid, req.rid
+    ))?;
 
     Ok(Json(Response {}))
 }

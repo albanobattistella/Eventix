@@ -395,17 +395,25 @@ impl CalDate {
 
     /// Returns this date normalized to the representation shape of `target`.
     ///
-    /// The returned value keeps the calendar day from `self` but uses the variant and date type or
-    /// time representation of `target`.
-    pub fn normalize_to(&self, target: &CalDate) -> Self {
+    /// The returned value keeps the point in time from `self` but uses the variant and date type
+    /// or time representation of `target`. `TZID` conversions resolve through `resolver`, so
+    /// embedded `VTIMEZONE` definitions are applied for both source and target timezones.
+    pub fn normalize_to(&self, target: &CalDate, resolver: &CalendarTimeZoneResolver) -> Self {
         match target {
             Self::Date(_, ty) => Self::Date(self.as_naive_date(), *ty),
-            Self::DateTime(CalDateTime::Utc(_)) => self.to_utc(),
+            Self::DateTime(CalDateTime::Utc(_)) => Self::DateTime(CalDateTime::Utc(
+                self.as_start_with_resolver(&Tz::UTC, resolver)
+                    .with_timezone(&Utc),
+            )),
             Self::DateTime(CalDateTime::Timezone(_, tzid)) => {
                 let naive = match self {
-                    Self::DateTime(CalDateTime::Timezone(dt, _)) => *dt,
+                    Self::DateTime(CalDateTime::Timezone(..))
+                    | Self::DateTime(CalDateTime::Utc(_)) => resolver.instant_to_local(
+                        self.as_start_with_resolver(&Tz::UTC, resolver),
+                        Some(tzid),
+                        &Tz::UTC,
+                    ),
                     Self::DateTime(CalDateTime::Floating(dt)) => *dt,
-                    Self::DateTime(CalDateTime::Utc(dt)) => dt.naive_utc(),
                     Self::Date(day, _) => day.and_hms_opt(0, 0, 0).unwrap(),
                 };
                 Self::DateTime(CalDateTime::Timezone(naive, tzid.clone()))
@@ -753,6 +761,7 @@ impl TryFrom<Property> for CalDate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::objects::EventLike;
     use serde_json::{from_str as from_json_str, to_string as to_json_string};
 
     #[test]
@@ -968,6 +977,81 @@ mod tests {
             CalDateType::Exclusive,
         );
         assert_eq!(plain_midnight.to_utc().to_string(), "TU2024-01-02T00:00:00");
+    }
+
+    #[test]
+    fn normalize_to_converts_between_timezones_by_instant() {
+        let resolver = CalendarTimeZoneResolver::default();
+        let berlin = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 3, 7)
+                .and_then(|d| d.and_hms_opt(8, 30, 0))
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+        let new_york_shape = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 3, 7)
+                .and_then(|d| d.and_hms_opt(2, 30, 0))
+                .unwrap(),
+            "America/New_York".to_string(),
+        ));
+
+        assert_eq!(
+            berlin.normalize_to(&new_york_shape, &resolver),
+            CalDate::DateTime(CalDateTime::Timezone(
+                NaiveDate::from_ymd_opt(2026, 3, 7)
+                    .and_then(|d| d.and_hms_opt(2, 30, 0))
+                    .unwrap(),
+                "America/New_York".to_string(),
+            ))
+        );
+    }
+
+    #[test]
+    fn normalize_to_uses_embedded_vtimezone_rules() {
+        let input = "BEGIN:VCALENDAR\n\
+BEGIN:VTIMEZONE\n\
+TZID:X-CUSTOM\n\
+BEGIN:STANDARD\n\
+DTSTART:19701025T030000\n\
+TZOFFSETFROM:+0200\n\
+TZOFFSETTO:+0100\n\
+TZNAME:XST\n\
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\n\
+END:STANDARD\n\
+BEGIN:DAYLIGHT\n\
+DTSTART:19700329T020000\n\
+TZOFFSETFROM:+0100\n\
+TZOFFSETTO:+0200\n\
+TZNAME:XDT\n\
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\n\
+END:DAYLIGHT\n\
+END:VTIMEZONE\n\
+BEGIN:VEVENT\n\
+UID:test\n\
+DTSTAMP:20250101T000000Z\n\
+DTSTART;TZID=X-CUSTOM:20260329T033000\n\
+END:VEVENT\n\
+END:VCALENDAR\n";
+
+        let cal = input.parse::<crate::objects::Calendar>().unwrap();
+        let resolver = cal.timezone_resolver();
+        let berlin = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 3, 29)
+                .and_then(|d| d.and_hms_opt(2, 30, 0))
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+        let custom_shape = cal.components()[0].start().unwrap().clone();
+
+        assert_eq!(
+            berlin.normalize_to(&custom_shape, resolver),
+            CalDate::DateTime(CalDateTime::Timezone(
+                NaiveDate::from_ymd_opt(2026, 3, 29)
+                    .and_then(|d| d.and_hms_opt(3, 30, 0))
+                    .unwrap(),
+                "X-CUSTOM".to_string(),
+            ))
+        );
     }
 
     #[test]

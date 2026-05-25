@@ -16,6 +16,7 @@ use serde::{Deserialize, Deserializer, de};
 use std::fmt::{self, Display};
 use std::path::Path;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::comps::password::{PasswordRequest, PasswordTemplate};
 use crate::html::filters;
@@ -90,7 +91,6 @@ pub struct SyncerRequest {
     o365_name: String,
     o365_email: String,
     o365_readonly: Option<String>,
-    o365_pw: PasswordRequest,
     o365_time_span: String,
     #[serde(
         deserialize_with = "SyncerRequest::deserialize_years",
@@ -115,7 +115,6 @@ impl Default for SyncerRequest {
             o365_name: String::new(),
             o365_email: String::new(),
             o365_readonly: None,
-            o365_pw: PasswordRequest::default(),
             o365_time_span: String::new(),
             o365_time_span_years: DEFAULT_TIME_SPAN_YEARS,
             fs_path: String::new(),
@@ -234,10 +233,6 @@ impl SyncerRequest {
                     page.add_error(locale.translate("error.collection_time_span_years"));
                     return false;
                 }
-
-                if !self.o365_pw.check(locale, page, is_add) {
-                    return false;
-                }
                 true
             }
             Syncer::FileSystem => {
@@ -283,10 +278,7 @@ impl SyncerRequest {
             Syncer::O365 => SyncerType::O365 {
                 email: EmailAccount::new(self.o365_name.clone(), self.o365_email.clone()),
                 read_only: self.o365_readonly.is_some(),
-                // here we can unwrap, because O365 always has a password
-                password: Self::determine_password(self.o365_pw.get(), cur)
-                    .await?
-                    .unwrap(),
+                password: Self::determine_o365_password(cur).await?,
                 time_span: Self::fields_to_time_span(
                     &self.o365_time_span,
                     self.o365_time_span_years,
@@ -313,6 +305,18 @@ impl SyncerRequest {
                 ))
             }
         }
+    }
+
+    async fn determine_o365_password(
+        cur: Option<&SyncerType>,
+    ) -> anyhow::Result<EncryptedPassword> {
+        if let Some(SyncerType::O365 { password, .. }) = cur {
+            return Ok(password.clone());
+        }
+
+        let secret = retrieve_portal_secret().await?;
+        let generated = Uuid::new_v4().simple().to_string();
+        encrypt_password(&secret, &generated).context("Encrypt password")
     }
 
     /// Deserializes the years spinner value, accepting both plain integers and string-encoded
@@ -393,14 +397,6 @@ impl<'a> SyncerTemplate<'a> {
         PasswordTemplate::new(
             self.locale.clone(),
             format!("{}[vdir_pw]", self.name),
-            self.is_edit,
-        )
-    }
-
-    pub fn o365_pw(&self) -> PasswordTemplate {
-        PasswordTemplate::new(
-            self.locale.clone(),
-            format!("{}[o365_pw]", self.name),
             self.is_edit,
         )
     }

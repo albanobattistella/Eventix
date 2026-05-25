@@ -163,7 +163,7 @@ pub async fn handler(
     let file = state
         .store()
         .file_by_id(&req.uid)
-        .context(format!("Unable to find file with uid {}", req.uid))?;
+        .context(format!("Unable to find file with uid '{}'", req.uid))?;
     let ctx = file.calendar().date_context();
 
     let occs: Vec<_> = match req.dir {

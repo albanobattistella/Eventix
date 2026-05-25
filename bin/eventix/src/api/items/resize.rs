@@ -171,7 +171,13 @@ async fn run_resize(
     // determine new start/end based on the to-be-resized occurrence
     let occ = file
         .occurrence_by_id(&req.uid, req.rid.as_ref(), locale.timezone())
-        .ok_or_else(|| anyhow!("Occurrence for {} at {:?} not found", req.uid, req.rid))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "Unable to find occurrence with uid '{}' and rid '{:?}'",
+                req.uid,
+                req.rid
+            )
+        })?;
     let (edge, new_value) = get_resize_op(&occ, &locale, &req, user_mail, resize_start)?;
 
     if let Some(comp) =
@@ -185,7 +191,7 @@ async fn run_resize(
     } else {
         let comp = file.component_with(|c| c.uid() == &req.uid).unwrap();
         if !comp.is_recurrent() {
-            return Err(anyhow!("Component {} is not recurrent", req.uid));
+            return Err(anyhow!("Component '{}' is not recurrent", req.uid));
         }
 
         file.create_overwrite(
@@ -203,8 +209,10 @@ async fn run_resize(
         )
         .context("Creating overwrite failed")?;
     }
-    file.save()
-        .context(format!("Save file {}:{:?}", req.uid, req.rid))?;
+    file.save().context(format!(
+        "Unable to save item with uid '{}' and rid '{:?}'",
+        req.uid, req.rid
+    ))?;
 
     Ok(Json(Response {}))
 }

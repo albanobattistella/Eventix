@@ -61,7 +61,7 @@ fn action_update(
     let rid = if let Some(ref rid) = req.rid {
         Some(
             rid.parse::<CalDate>()
-                .context(format!("Invalid rid date: {rid}"))?,
+                .context(format!("Invalid rid date: '{rid}'"))?,
         )
     } else {
         None
@@ -253,7 +253,7 @@ fn action_update(
         } else {
             let comp = file.component_with(|c| c.uid() == &req.uid).unwrap();
             if !comp.is_recurrent() {
-                return Err(anyhow!("Component {} is not recurrent", req.uid));
+                return Err(anyhow!("Component '{}' is not recurrent", req.uid));
             }
 
             let tz: Tz = event_tz

@@ -659,7 +659,7 @@ impl CalFile {
             .ok_or_else(|| E::from(ColError::ComponentNotFound(uid.clone())))?;
         let rid = base
             .start()
-            .map(|start| rid.normalize_to(start))
+            .map(|start| rid.normalize_to(start, self.cal.timezone_resolver()))
             .unwrap_or(rid);
 
         // does the overwrite exist?
@@ -2286,6 +2286,64 @@ END:VCALENDAR";
         let result: Result<CalDate, ColError> =
             file.create_overwrite("dup-ow", rid, tz, |_, _| Ok(()));
         assert!(matches!(result, Err(ColError::RidExists(_))));
+    }
+
+    #[test]
+    fn create_overwrite_normalizes_rid_with_embedded_vtimezone() {
+        let input = "BEGIN:VCALENDAR\n\
+BEGIN:VTIMEZONE\n\
+TZID:X-CUSTOM\n\
+BEGIN:STANDARD\n\
+DTSTART:19700101T000000\n\
+TZOFFSETFROM:+0200\n\
+TZOFFSETTO:+0200\n\
+TZNAME:XST\n\
+END:STANDARD\n\
+END:VTIMEZONE\n\
+BEGIN:VEVENT\n\
+UID:custom-rid\n\
+DTSTAMP:20250101T000000Z\n\
+DTSTART;TZID=X-CUSTOM:20260307T033000\n\
+DTEND;TZID=X-CUSTOM:20260307T043000\n\
+RRULE:FREQ=DAILY;COUNT=2\n\
+END:VEVENT\n\
+END:VCALENDAR\n";
+
+        let cal: Calendar = input.parse().unwrap();
+        let mut file = CalFile::new_simple(cal);
+        let rid = CalDate::DateTime(CalDateTime::Timezone(
+            NaiveDate::from_ymd_opt(2026, 3, 7)
+                .unwrap()
+                .and_hms_opt(2, 30, 0)
+                .unwrap(),
+            "Europe/Berlin".to_string(),
+        ));
+
+        let normalized = file
+            .create_overwrite::<_, _, ColError>(
+                "custom-rid",
+                rid,
+                &chrono_tz::Europe::Berlin,
+                |_base, _comp| Ok(()),
+            )
+            .unwrap();
+
+        assert_eq!(
+            normalized,
+            CalDate::DateTime(CalDateTime::Timezone(
+                NaiveDate::from_ymd_opt(2026, 3, 7)
+                    .unwrap()
+                    .and_hms_opt(3, 30, 0)
+                    .unwrap(),
+                "X-CUSTOM".to_string(),
+            ))
+        );
+
+        let overwrite = file
+            .component_with(|c| c.uid() == "custom-rid" && c.rid().is_some())
+            .unwrap();
+        assert_eq!(overwrite.rid(), Some(&normalized));
+        assert_eq!(overwrite.start(), Some(&normalized));
     }
 
     // -----------------------------------------------------------------------
