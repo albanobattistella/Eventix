@@ -1,7 +1,28 @@
 /* ------------ GENERAL ------------ */
 
+@font-face {
+    font-family: "Linux Biolinum";
+    src: url("fonts/LinBiolinum_R.otf") format("opentype");
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Linux Biolinum";
+    src: url("fonts/LinBiolinum_RI.otf") format("opentype");
+    font-style: italic;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Linux Biolinum";
+    src: url("fonts/LinBiolinum_RB.otf") format("opentype");
+    font-style: normal;
+    font-weight: 700;
+}
+
 body {
-    font-family: "Linux Biolinum", "Verdana";
+    font-family: "Linux Biolinum", Verdana, sans-serif;
     font-size: 1em;
 }
 
