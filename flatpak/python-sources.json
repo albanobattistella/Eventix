@@ -12,8 +12,8 @@
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/ee/ae/8e92f8058baf87f6c7d86ee7e457668690195cc77efedb8d3797a06e3940/click-8.4.0-py3-none-any.whl",
-                    "sha256": "40c50b7c6c6adac2823d411041ec84f3f103f1b280d5e9ce0d7f998995832f81"
+                    "url": "https://files.pythonhosted.org/packages/c7/0d/67e5b4109ea4a837e80daa87c2c696711955e40449a97e8926672534def2/click-8.4.1-py3-none-any.whl",
+                    "sha256": "482be17c6991b8c19c5429a1e995d9b0efdbb63172824c41f99965dc0ade8ec2"
                 }
             ]
         },
@@ -26,8 +26,8 @@
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/ee/ae/8e92f8058baf87f6c7d86ee7e457668690195cc77efedb8d3797a06e3940/click-8.4.0-py3-none-any.whl",
-                    "sha256": "40c50b7c6c6adac2823d411041ec84f3f103f1b280d5e9ce0d7f998995832f81"
+                    "url": "https://files.pythonhosted.org/packages/c7/0d/67e5b4109ea4a837e80daa87c2c696711955e40449a97e8926672534def2/click-8.4.1-py3-none-any.whl",
+                    "sha256": "482be17c6991b8c19c5429a1e995d9b0efdbb63172824c41f99965dc0ade8ec2"
                 },
                 {
                     "type": "file",
@@ -45,8 +45,8 @@
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/22/30/7cd8fdcdfbc5b869528b079bfb76dcdf6056b1a2097a662e5e8c04f42965/certifi-2026.4.22-py3-none-any.whl",
-                    "sha256": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a"
+                    "url": "https://files.pythonhosted.org/packages/59/8c/57e832b7af6d7c5abe66eb3fbe3a3a32f4d11ea23a1aa7131371035be991/certifi-2026.5.20-py3-none-any.whl",
+                    "sha256": "3c52e209ba0a4ad7aebe60436a4ab349c39e1e602e8c134221e546902ad25897"
                 },
                 {
                     "type": "file",
@@ -55,8 +55,8 @@
                 },
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/d2/23/408243171aa9aaba178d3e2559159c24c1171a641aa83b67bdd3394ead8e/idna-3.15-py3-none-any.whl",
-                    "sha256": "048adeaf8c2d788c40fee287673ccaa74c24ffd8dcf09ffa555a2fbb59f10ac8"
+                    "url": "https://files.pythonhosted.org/packages/94/16/70255075a9859a0e3adb789b68ceb0e210dec03934245fd98d248226572f/idna-3.16-py3-none-any.whl",
+                    "sha256": "cc246e3a3f89580c3a951b5ad298ca4638078b2cdd4f115654332b5c26daded5"
                 },
                 {
                     "type": "file",
@@ -79,8 +79,8 @@
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/0f/15/5bf3b99495fb160b63f95972b81750f18f7f4e02ad051373b669d17d44f2/aiohappyeyeballs-2.6.1-py3-none-any.whl",
-                    "sha256": "f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8"
+                    "url": "https://files.pythonhosted.org/packages/5f/fc/a7bf5b6e4e617b45f90f2d9d2a68519c249c81dd4fc2658c7a2a61c4f4b7/aiohappyeyeballs-2.6.2-py3-none-any.whl",
+                    "sha256": "4708045e2d7a6c6bdf8aafa8ed39649eaf926a4543b54560659129e3365953c4"
                 },
                 {
                     "type": "file",
@@ -104,8 +104,8 @@
                 },
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/d2/23/408243171aa9aaba178d3e2559159c24c1171a641aa83b67bdd3394ead8e/idna-3.15-py3-none-any.whl",
-                    "sha256": "048adeaf8c2d788c40fee287673ccaa74c24ffd8dcf09ffa555a2fbb59f10ac8"
+                    "url": "https://files.pythonhosted.org/packages/94/16/70255075a9859a0e3adb789b68ceb0e210dec03934245fd98d248226572f/idna-3.16-py3-none-any.whl",
+                    "sha256": "cc246e3a3f89580c3a951b5ad298ca4638078b2cdd4f115654332b5c26daded5"
                 },
                 {
                     "type": "file",
@@ -119,8 +119,8 @@
                 },
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/69/68/c8739671f5699c7dc470580a4f821ef37c32c4cb0b047ce223a7f115757f/yarl-1.23.0-py3-none-any.whl",
-                    "sha256": "a2df6afe50dea8ae15fa34c9f824a3ee958d785fd5d089063d960bae1daa0a3f"
+                    "url": "https://files.pythonhosted.org/packages/fd/4d/4b880086bd0d3e034d25647be1d830afc3e3f610e98c4ab3490af6b1b6d5/yarl-1.24.2-py3-none-any.whl",
+                    "sha256": "2783d9226db8797636cd6896e4de81feed252d1db72265686c9558d97a4d94b9"
                 }
             ]
         },

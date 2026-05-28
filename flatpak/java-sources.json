@@ -3097,6 +3097,18 @@
     },
     {
         "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/25/javafx-base-25-linux-aarch64.jar",
+        "sha256": "fad71f7de92680ad489deb32bdc51e9e01ff8ba1901508beae281eab8002781e",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-base/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/25/javafx-base-25-linux-aarch64.jar",
+        "sha256": "fad71f7de92680ad489deb32bdc51e9e01ff8ba1901508beae281eab8002781e",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-base/25"
+    },
+    {
+        "type": "file",
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/25/javafx-base-25-linux.jar",
         "sha256": "32425946bb8b8db0717cfa2fb2e00e21cd489f35b9662b6faca18b615a4a9669",
         "dest": "flatpak/java-deps/org/openjfx/javafx-base/25"
@@ -3130,6 +3142,18 @@
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/25/javafx-base-25.pom",
         "sha256": "5c562972a2baef7aa407b27d59ce173a5ea50a1b7b7518043b7fc8f76fefe537",
         "dest": "flatpak/java-deps/org/openjfx/javafx-base/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-controls/25/javafx-controls-25-linux-aarch64.jar",
+        "sha256": "a9fec1680e62355d3a3c1bb3fbd2fb5429e534bfaf58b5778dca776ad28ebcd8",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-controls/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-controls/25/javafx-controls-25-linux-aarch64.jar",
+        "sha256": "a9fec1680e62355d3a3c1bb3fbd2fb5429e534bfaf58b5778dca776ad28ebcd8",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-controls/25"
     },
     {
         "type": "file",
@@ -3169,6 +3193,18 @@
     },
     {
         "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/25/javafx-graphics-25-linux-aarch64.jar",
+        "sha256": "e3b92cbb2e8baf869280bd0fa63607fa51d12305fdb6128134c1121fd6df85eb",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-graphics/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/25/javafx-graphics-25-linux-aarch64.jar",
+        "sha256": "e3b92cbb2e8baf869280bd0fa63607fa51d12305fdb6128134c1121fd6df85eb",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-graphics/25"
+    },
+    {
+        "type": "file",
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/25/javafx-graphics-25-linux.jar",
         "sha256": "3e518bc17ee558559a2ac58a5f7fd452615108d9d5088f65b13bee9399c3722b",
         "dest": "flatpak/java-deps/org/openjfx/javafx-graphics/25"
@@ -3202,6 +3238,18 @@
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/25/javafx-graphics-25.pom",
         "sha256": "cc1da363b21deeebf299158193daa6201f944b0f927adbf5dc384beb6a8339f4",
         "dest": "flatpak/java-deps/org/openjfx/javafx-graphics/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-media/25/javafx-media-25-linux-aarch64.jar",
+        "sha256": "314991f62b695d519414fd29f150c89ce7e798a457166bfa776350e1e6264f59",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-media/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-media/25/javafx-media-25-linux-aarch64.jar",
+        "sha256": "314991f62b695d519414fd29f150c89ce7e798a457166bfa776350e1e6264f59",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-media/25"
     },
     {
         "type": "file",
@@ -3241,6 +3289,18 @@
     },
     {
         "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-swing/25/javafx-swing-25-linux-aarch64.jar",
+        "sha256": "661bc4fc47d5a01ef5f7a8133939a8399799164fdc0650baf1957f5acd19be7a",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-swing/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-swing/25/javafx-swing-25-linux-aarch64.jar",
+        "sha256": "661bc4fc47d5a01ef5f7a8133939a8399799164fdc0650baf1957f5acd19be7a",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-swing/25"
+    },
+    {
+        "type": "file",
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-swing/25/javafx-swing-25-linux.jar",
         "sha256": "278a1e9fbb22a861d6ed3102d4f3b0ebe5d351b219fdf9dcd542dc1f3a6d2876",
         "dest": "flatpak/java-deps/org/openjfx/javafx-swing/25"
@@ -3274,6 +3334,18 @@
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-swing/25/javafx-swing-25.pom",
         "sha256": "1d09de648f0e52d1fa5f17d32f252ccaae5f950e19bcac8533672e66ed1da05b",
         "dest": "flatpak/java-deps/org/openjfx/javafx-swing/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-web/25/javafx-web-25-linux-aarch64.jar",
+        "sha256": "b7207c08e7fcab057abb2b387e7abc93e5147795e0f983b7cde5a9b3a150cbfc",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-web/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx-web/25/javafx-web-25-linux-aarch64.jar",
+        "sha256": "b7207c08e7fcab057abb2b387e7abc93e5147795e0f983b7cde5a9b3a150cbfc",
+        "dest": "flatpak/java-deps/org/openjfx/javafx-web/25"
     },
     {
         "type": "file",
@@ -3322,6 +3394,18 @@
         "url": "https://repo.maven.apache.org/maven2/org/openjfx/javafx/25/javafx-25.pom",
         "sha256": "e7923308fcadd7f2c68b072041f47d8e7355223d846559eeb5c780dc4ba2bf13",
         "dest": "flatpak/java-deps/org/openjfx/javafx/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/jdk-jsobject/25/jdk-jsobject-25-linux-aarch64.jar",
+        "sha256": "36553701597a0c1bf6bfc410ff4bdeb78653d57bf6b005502a9e13e3f37d538d",
+        "dest": "flatpak/java-deps/org/openjfx/jdk-jsobject/25"
+    },
+    {
+        "type": "file",
+        "url": "https://repo.maven.apache.org/maven2/org/openjfx/jdk-jsobject/25/jdk-jsobject-25-linux-aarch64.jar",
+        "sha256": "36553701597a0c1bf6bfc410ff4bdeb78653d57bf6b005502a9e13e3f37d538d",
+        "dest": "flatpak/java-deps/org/openjfx/jdk-jsobject/25"
     },
     {
         "type": "file",
