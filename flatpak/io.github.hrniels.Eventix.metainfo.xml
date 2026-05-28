@@ -7,6 +7,7 @@
   <url type="homepage">https://github.com/hrniels/Eventix</url>
   <url type="vcs-browser">https://github.com/hrniels/Eventix</url>
   <url type="bugtracker">https://github.com/hrniels/Eventix/issues</url>
+  <content_rating type="oars-1.1" />
   <developer_name>Nils Asmussen</developer_name>
   <summary>Event and Task Manager</summary>
 
@@ -139,7 +140,4 @@
       </description>
     </release>
   </releases>
-
-  <url type="homepage">https://github.com/hrniels/eventix</url>
-  <content_rating type="oars-1.1" />
 </component>
