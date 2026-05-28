@@ -102,6 +102,9 @@ def cmd_watch(args):
 
 def cmd_app(args):
     """Runs the Eventix app."""
+    # ensure that the server and getpw are up-to-date as well
+    subprocess.run(["cargo", "build", "--bin", "eventix", "--bin", "eventix-getpw"], check=True)
+
     cmd_args = [
         "cargo", "run", "--bin", "eventix-app", "--",
         "--address", args.address,

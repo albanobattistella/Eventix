@@ -12,6 +12,7 @@ use ksni::{Icon, Status, ToolTip};
 pub enum TrayMessage {
     LoadPage(String),
     ToggleWindow,
+    Quit,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -47,6 +48,12 @@ impl EventixTray {
 
     pub fn load_page(&self, uri: &str) {
         if let Err(e) = self.sender.try_send(TrayMessage::LoadPage(uri.into())) {
+            eprintln!("Failed to send message: {e:?}");
+        }
+    }
+
+    pub fn quit(&self) {
+        if let Err(e) = self.sender.try_send(TrayMessage::Quit) {
             eprintln!("Failed to send message: {e:?}");
         }
     }
@@ -245,7 +252,9 @@ impl ksni::Tray for EventixTray {
             StandardItem {
                 label: "Exit".into(),
                 icon_name: "application-exit".into(),
-                activate: Box::new(|_| std::process::exit(0)),
+                activate: Box::new(|tray: &mut EventixTray| {
+                    tray.quit();
+                }),
                 ..Default::default()
             }
             .into(),
