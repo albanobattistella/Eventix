@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
-    fs,
-    process::Command,
+    env, fs,
+    net::TcpStream,
+    process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -62,11 +63,69 @@ impl Default for WindowState {
     }
 }
 
+fn server_is_reachable(address: &str, port: u16) -> bool {
+    TcpStream::connect((address, port)).is_ok()
+}
+
+fn stop_spawned_server(child: &mut Child) {
+    if let Ok(None) = child.try_wait() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
+fn ensure_webserver_running(args: &Args) -> Option<Child> {
+    // already running? use that server
+    if server_is_reachable(&args.address, args.port) {
+        return None;
+    }
+
+    // start the server
+    let mut cmd = Command::new("eventix");
+    cmd.arg("--address")
+        .arg(&args.address)
+        .arg("--port")
+        .arg(args.port.to_string())
+        .stdin(Stdio::null());
+    let mut child = cmd
+        .spawn()
+        .unwrap_or_else(|e| panic!("spawning eventix server failed: {e:?}"));
+
+    // give a server some time to listen on the socket
+    for _ in 0..50 {
+        if server_is_reachable(&args.address, args.port) {
+            return Some(child);
+        }
+
+        if let Ok(Some(status)) = child.try_wait() {
+            panic!("eventix server exited before startup finished: {status}");
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    stop_spawned_server(&mut child);
+    panic!(
+        "eventix server did not start listening on {}:{}",
+        args.address, args.port
+    );
+}
+
 fn main() {
     let args = Args::parse();
 
     let xdg = BaseDirectories::with_prefix(APP_ID);
+    let spawned_server = Arc::new(Mutex::new(ensure_webserver_running(&args)));
     let app = gtk::Application::builder().application_id(APP_ID).build();
+
+    app.connect_shutdown({
+        let spawned_server = spawned_server.clone();
+        move |_| {
+            if let Some(mut child) = spawned_server.lock().unwrap().take() {
+                stop_spawned_server(&mut child);
+            }
+        }
+    });
 
     app.connect_activate(move |app| {
         // create channel between tray icon and main GTK thread
@@ -154,6 +213,7 @@ fn main() {
 
         // handle messages in main GTK thread
         if let Some(tray) = tray {
+            let app = app.clone();
             let base_url = url.clone();
             let mut maximized = false;
             glib::MainContext::default().spawn_local(async move {
@@ -179,6 +239,7 @@ fn main() {
                                 window.present();
                             }
                         }
+                        TrayMessage::Quit => app.quit(),
                     }
                 }
             });
