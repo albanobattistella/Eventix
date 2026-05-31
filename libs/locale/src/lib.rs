@@ -5,7 +5,7 @@
 //! Locale-aware date and time formatting for calendar events.
 //!
 //! This crate provides the [`Locale`] trait and concrete implementations for English
-//! ([`LocaleEn`]) and German ([`LocaleDe`]). A locale combines a timezone with an optional
+//! ([`LocaleEn`]) German ([`LocaleDe`]) and Italian ([`LocaleIt`]). A locale combines a timezone with an optional
 //! translations table loaded from a TOML file, and exposes methods for formatting dates, times,
 //! and date ranges in a human-readable, language-appropriate form.
 //!
@@ -47,6 +47,7 @@
 
 mod de;
 mod en;
+mod it;
 
 use bitflags::bitflags;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -67,6 +68,7 @@ use xdg::BaseDirectories;
 pub use de::LocaleDe;
 #[allow(unused_imports)]
 pub use en::LocaleEn;
+pub use it::LocaleIt;
 
 /// Errors that can occur when constructing a locale.
 #[derive(Debug, Error)]
@@ -87,6 +89,7 @@ pub enum LocaleType {
     German,
     #[default]
     English,
+    Italian,
 }
 
 /// A flat key-to-value mapping loaded from a TOML translations file.
@@ -396,6 +399,9 @@ pub fn new_with_timezone(
         }
         LocaleType::English => {
             Arc::new(LocaleEn::new(tz, &translations).map_err(LocaleError::ReadLocale)?)
+        }
+        LocaleType::Italian => {
+            Arc::new(LocaleIt::new(tz, &translations).map_err(LocaleError::ReadLocale)?)  
         }
     })
 }
